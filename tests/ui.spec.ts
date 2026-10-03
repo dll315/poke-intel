@@ -37,6 +37,47 @@ test("公开空状态可浏览，清楚显示外部来源尚未接入", async ({
   await expect(page).toHaveURL(/from=2026-01-01/);
 });
 
+test("资料库展示 Alphapedia 来源并支持搜索", async ({ page }) => {
+  await page.route("**/api/v1/catalog?**", (route) => route.fulfill({json:{items:[{id:1,kind:"boss",pokemon:"勾魂眼",pokemonOriginal:"Sableye",region:"hoenn",location:"Granite Cave",locationNote:"Basement",tier:4,nationalDex:302,hms:["Flash"],valuable:false,source:"Alphapedia",sourceUrl:"https://alpha.pokemmotools.org/alpha-list",syncedAt:"2026-10-03T04:00:00.000Z"}],total:1,page:1,pageSize:20}}));
+  await page.goto("/");
+  await page.getByRole("button", { name: "刷新资料库", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "刷新资料库", exact: true })).toBeVisible();
+  await expect(page.getByText("勾魂眼", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sableye", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "查看 Alphapedia 来源", exact: true })).toHaveAttribute("href","https://alpha.pokemmotools.org/alpha-list");
+  await page.getByLabel("搜索资料").fill("皮卡丘");
+  await page.getByRole("button", { name: "搜索资料", exact: true }).click();
+  await expect(page).toHaveURL(/view=catalog/);
+});
+
+test("管理员可在推送设置中保存、测试、停用和清除机器人", async ({ page }) => {
+  const secret="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=ui-secret-key";
+  let state={enabled:true,configured:true,source:"environment",masked:"key=**********t-key",canSaveWebhook:true,configurationError:false,counts:{pending:1,sending:0,sent:2,failed:0,skipped:0},lastSentAt:"2026-10-04T01:00:00.000Z",lastError:null as string|null};
+  await page.route("**/api/v1/admin/settings/notifications**",async route=>{
+    const method=route.request().method(),url=route.request().url();
+    if(method==="PUT"){const body=route.request().postDataJSON();state={...state,enabled:body.enabled,configured:true,source:"database",masked:"key=**********t-key"};}
+    if(method==="DELETE")state={...state,source:"environment",configured:true};
+    if(method==="POST"&&url.endsWith("/test"))return route.fulfill({json:{ok:true}});
+    return route.fulfill({json:state});
+  });
+  await page.goto("/");
+  await page.getByRole("button",{name:"登录 / 注册",exact:true}).click();
+  await page.getByLabel("邮箱",{exact:true}).fill("browser-admin@example.com");
+  await page.getByLabel("密码",{exact:true}).fill("browser-admin-password");
+  await page.getByRole("button",{name:"登录",exact:true}).click();
+  await page.getByRole("button",{name:"管理后台",exact:true}).click();
+  await page.getByRole("button",{name:"推送设置",exact:true}).click();
+  await expect(page.getByText("key=**********t-key",{exact:true})).toBeVisible();
+  await expect(page.getByText("ui-secret-key")).toHaveCount(0);
+  await page.getByLabel("企业微信机器人 Webhook").fill(secret);
+  await page.getByRole("button",{name:"保存设置",exact:true}).click();
+  await page.getByRole("button",{name:"发送测试消息",exact:true}).click();
+  await page.getByLabel("启用企业微信推送").uncheck();
+  await page.getByRole("button",{name:"保存设置",exact:true}).click();
+  await page.getByRole("button",{name:"清除网页配置",exact:true}).click();
+  await expect(page.getByText("ui-secret-key")).toHaveCount(0);
+});
+
 test("注册、上报和我的待审记录，登出后保持公开权限", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");

@@ -40,6 +40,46 @@ test('anonymous browsing cannot submit; registration, session and logout enforce
   assert.equal((await call('GET','/auth/me',undefined,s)).json().user,null);
 });
 
+test('configured local origin aliases accept localhost and loopback but reject other sites',async t=>{
+  const {call}=await fixture(t,{origin:'http://localhost:5173',allowedOrigins:['http://localhost:5173','http://127.0.0.1:5173']});
+  const payload={email:'alias@example.com',nickname:'玩家',password:'password12345'};
+  assert.equal((await call('POST','/auth/register',payload,null,{origin:'http://127.0.0.1:5173'})).statusCode,201);
+  assert.equal((await call('POST','/auth/register',{...payload,email:'evil@example.com'},null,{origin:'https://evil.example'})).statusCode,403);
+});
+
+test('Alphapedia catalog sync normalizes searchable data and keeps cached rows after upstream failure',async t=>{
+  let fail=false;let requests=0;
+  const transport=async url=>{
+    requests++;
+    if(fail)throw new Error('upstream unavailable');
+    if(String(url).endsWith('/api/alpha-spawn-data'))return Response.json({Hoenn:{'Granite Cave':[{name:'Sableye',data:{Region:'Hoenn','Specific Location':'Granite Cave','Location Notes':'Basement',HMs:['Flash'],Tier:4}}]}});
+    if(String(url).endsWith('/api/swarm-spawn-data'))return Response.json({Kanto:{'Viridian Forest':[{name:'Pikachu',data:{Region:'Kanto','Specific Location':'Viridian Forest','Location Notes':'',HMs:[],Tier:2,HasValuable:true}}]}});
+    if(String(url).endsWith('/api/pokemon-natdex-map'))return Response.json({sableye:302,pikachu:25});
+    if(String(url).endsWith('/static/translations/zh/pokemon-species-zh.json'))return Response.json({Sableye:'勾魂眼',Pikachu:'皮卡丘'});
+    return new Response('missing',{status:404});
+  };
+  const {app,call}=await fixture(t,{catalog:{enabled:true,permissionConfirmed:true,fetchImpl:transport,autoStart:false}});
+  assert.equal((await call('GET','/status')).json().externalSourcesEnabled,true);
+  assert.equal((await call('GET','/catalog')).json().total,0);
+  assert.deepEqual(await app.catalog.refresh(),{imported:2,total:2});
+  const alpha=(await call('GET','/catalog?kind=boss&q=granite')).json();
+  assert.equal(alpha.total,1);assert.equal(alpha.items[0].pokemon,'勾魂眼');assert.equal(alpha.items[0].pokemonOriginal,'Sableye');assert.equal(alpha.items[0].nationalDex,302);assert.equal(alpha.items[0].sourceUrl,'https://alpha.pokemmotools.org/alpha-list');
+  assert.equal((await call('GET','/catalog?q=勾魂眼')).json().total,1);
+  assert.equal((await call('GET','/catalog?kind=swarm&region=kanto')).json().items[0].valuable,true);
+  assert.deepEqual(await app.catalog.refresh(),{imported:2,total:2});
+  fail=true;await assert.rejects(()=>app.catalog.refresh(),/upstream unavailable/);
+  assert.equal((await call('GET','/catalog')).json().total,2);
+  assert.equal(requests,9);
+});
+
+test('event output translates known English Pokemon names and preserves unknown names',async t=>{
+  const {app,call}=await fixture(t);
+  app.db.prepare('INSERT INTO pokemon_names(english_name,chinese_name,synced_at) VALUES(?,?,?)').run('Pikachu','皮卡丘','2026-10-03T04:00:00.000Z');
+  app.db.prepare("INSERT INTO events(kind,pokemon,region,location,observed_at,expires_at,last_confirmed_at,status,source) VALUES('boss','Pikachu','kanto','森林','2026-10-03T04:00:00.000Z','2026-10-03T05:00:00.000Z','2026-10-03T04:00:00.000Z','active','external')").run();
+  const item=(await call('GET','/events')).json().items[0];assert.equal(item.pokemon,'皮卡丘');assert.equal(item.pokemonOriginal,'Pikachu');
+  assert.equal((await call('GET','/events?q=皮卡丘')).json().total,1);
+});
+
 test('pending reports are private; admins approve, merge only same location, reject and audit',async t=>{
   const {app,call,login,report,advance}=await fixture(t);const player=await login();const admin=await login('admin@example.com','admin');
   const first=await call('POST','/reports',report(),player);assert.equal(first.statusCode,201,first.body);const id=first.json().id;

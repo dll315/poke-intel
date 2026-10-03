@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Activity,
   Archive,
+  BookOpen,
   ArrowRight,
   Clock,
   FileText,
@@ -27,8 +28,9 @@ import { Pagination, Empty, EventCard, ReportCard } from "./ui";
 import { AuthDialog, LoginPrompt } from "./auth";
 import { ReportForm } from "./reports";
 import { AdminPanel } from "./admin";
+import { Catalog } from "./catalog";
 import { time } from "./time";
-type View = "live" | "history" | "report" | "mine" | "admin";
+type View = "live" | "history" | "catalog" | "report" | "mine" | "admin";
 type Filters = {
   q: string;
   kind: string;
@@ -64,11 +66,10 @@ function query(filters: Filters, page: number, history = false) {
   return p.toString();
 }
 export default function App() {
-  const [view, setView] = useState<View>(() =>
-    new URLSearchParams(location.search).get("view") === "history"
-      ? "history"
-      : "live",
-  );
+  const [view, setView] = useState<View>(() => {
+    const initial = new URLSearchParams(location.search).get("view");
+    return initial === "history" || initial === "catalog" ? initial : "live";
+  });
   const [session, setSession] = useState<Session>({
     user: null,
     csrfToken: "",
@@ -188,7 +189,7 @@ export default function App() {
     setError("");
     setPage(1);
     const p = new URLSearchParams();
-    if (next === "history") p.set("view", "history");
+    if (next === "history" || next === "catalog") p.set("view", next);
     history.replaceState(null, "", p.size ? `?${p}` : location.pathname);
     if (next === "live") {
       setFilters({
@@ -227,6 +228,7 @@ export default function App() {
   const navs: { view: View; label: string; icon: typeof Activity }[] = [
     { view: "live", label: "实时情报", icon: Radio },
     { view: "history", label: "历史查询", icon: Archive },
+    { view: "catalog", label: "刷新资料库", icon: BookOpen },
     { view: "report", label: "玩家上报", icon: Plus },
     { view: "mine", label: "我的上报", icon: FileText },
     ...(user?.role === "admin"
@@ -328,6 +330,8 @@ export default function App() {
                   ? "KEEP EXPLORING"
                   : view === "history"
                     ? "EXPLORE THE ARCHIVE"
+                    : view === "catalog"
+                      ? "ALPHAPEDIA REFERENCE"
                     : view === "report"
                       ? "SHARE YOUR DISCOVERY"
                       : view === "mine"
@@ -340,6 +344,8 @@ export default function App() {
                   ? "掌握最新动态，让每一次冒险都有方向。"
                   : view === "history"
                     ? "回看玩家的发现，查询已审核的情报记录。"
+                    : view === "catalog"
+                      ? "查询头目与群聚的可能刷新地点，规划探索路线。"
                     : view === "report"
                       ? "分享你在游戏中的发现，帮助更多训练家。"
                       : view === "mine"
@@ -597,6 +603,7 @@ export default function App() {
             ) : (
               <LoginPrompt onLogin={() => setAuthMode("login")} />
             ))}
+          {view === "catalog" && <Catalog onError={handleError} />}
           {view === "mine" &&
             (user ? (
               <>

@@ -33,13 +33,37 @@ export function openDb(dbPath='data/poke.db') {
       id INTEGER PRIMARY KEY, actor_id INTEGER REFERENCES users(id), action TEXT NOT NULL,
       entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, details TEXT NOT NULL, created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS notification_outbox (
+      id INTEGER PRIMARY KEY, event_id INTEGER NOT NULL UNIQUE REFERENCES events(id),
+      state TEXT NOT NULL CHECK(state IN ('pending','sending','sent','failed','skipped')),
+      attempts INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, next_attempt_at INTEGER NOT NULL,
+      attempted_at INTEGER, lease_until INTEGER, sent_at TEXT, last_error TEXT
+    );
+    CREATE TABLE IF NOT EXISTS external_catalog (
+      id INTEGER PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('boss','swarm')),
+      pokemon TEXT NOT NULL, region TEXT NOT NULL, location TEXT NOT NULL,
+      location_note TEXT NOT NULL DEFAULT '', tier INTEGER, national_dex INTEGER,
+      hms TEXT NOT NULL DEFAULT '[]', valuable INTEGER NOT NULL DEFAULT 0,
+      pokemon_zh TEXT, source TEXT NOT NULL, source_url TEXT NOT NULL, source_key TEXT NOT NULL UNIQUE,
+      synced_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS pokemon_names (
+      english_name TEXT PRIMARY KEY COLLATE NOCASE, chinese_name TEXT NOT NULL, synced_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL,
+      updated_by INTEGER REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_notifications_due ON notification_outbox(state,next_attempt_at);
     CREATE INDEX IF NOT EXISTS idx_reports_user_time ON reports(user_id,created_at);
     CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status,created_at);
     CREATE INDEX IF NOT EXISTS idx_events_match ON events(kind,pokemon,region,location,status);
     CREATE INDEX IF NOT EXISTS idx_events_observed ON events(observed_at);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_catalog_filter ON external_catalog(kind,region,pokemon,location);
   `);
   if(!db.prepare('PRAGMA table_info(users)').all().some(column=>column.name==='session_generation'))db.exec('ALTER TABLE users ADD COLUMN session_generation INTEGER NOT NULL DEFAULT 0');
+  if(!db.prepare('PRAGMA table_info(external_catalog)').all().some(column=>column.name==='pokemon_zh'))db.exec('ALTER TABLE external_catalog ADD COLUMN pokemon_zh TEXT');
   return db;
 }
 

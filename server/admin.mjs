@@ -4,8 +4,16 @@ import {transaction,audit} from './db.mjs';
 import {listReports,reportView} from './reports.mjs';
 import {listEvents,eventView,expireEvents} from './events.mjs';
 import {safeUser} from './auth.mjs';
+import {validateWecomWebhook} from './notifications.mjs';
 
-export function registerAdmin(app,{db,now}) {
+const notificationSettingsInput=z.object({enabled:z.boolean(),webhookUrl:z.string().max(1000).refine(value=>{try{validateWecomWebhook(value);return true;}catch{return false;}},'企业微信 Webhook 地址无效').optional()}).strict();
+
+export function registerAdmin(app,{db,now,notifications,settings}) {
+  app.get('/api/v1/admin/notifications',async()=>notifications.status());
+  app.get('/api/v1/admin/settings/notifications',async()=>({...settings.getNotificationStatus(),...notifications.status()}));
+  app.put('/api/v1/admin/settings/notifications',async request=>settings.saveNotificationConfig(parse(notificationSettingsInput,request.body),request.user.id));
+  app.delete('/api/v1/admin/settings/notifications/webhook',async request=>settings.clearNotificationWebhook(request.user.id));
+  app.post('/api/v1/admin/settings/notifications/test',async()=>notifications.sendTest());
   app.get('/api/v1/admin/reports',async request=>listReports(db,request.query,undefined,true));
   app.get('/api/v1/admin/events',async request=>{expireEvents(db,new Date(now()).toISOString());return listEvents(db,request.query,true);});
   app.post('/api/v1/admin/reports/:id/review',async request=>{
@@ -32,6 +40,7 @@ export function registerAdmin(app,{db,now}) {
           const result=db.prepare('INSERT INTO events(kind,pokemon,region,location,observed_at,expires_at,last_confirmed_at,status,source,source_url,note) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
             .run(report.kind,report.pokemon,report.region,report.location,report.observed_at,expiresAt,report.observed_at,expiresAt>at?'active':'ended',report.source,report.source_url,report.note);
           eventId=Number(result.lastInsertRowid);
+          if(expiresAt>at)notifications.enqueueEvent(eventId);
         }
       }
       const status=input.action==='approve'?'approved':'rejected';

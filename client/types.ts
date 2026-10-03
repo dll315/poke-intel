@@ -18,6 +18,7 @@ export type Event = {
   id: number;
   kind: Kind;
   pokemon: string;
+  pokemonOriginal?: string;
   region: Region;
   location: string;
   observedAt: string;
@@ -45,6 +46,10 @@ export type Report = {
   sourceUrl: string | null;
   createdAt: string;
   reporter: { nickname: string };
+};
+export type CatalogEntry = {
+  id:number;kind:Kind;pokemon:string;pokemonOriginal:string;region:Region;location:string;locationNote:string;
+  tier:number|null;nationalDex:number|null;hms:string[];valuable:boolean;source:string;sourceUrl:string;syncedAt:string;
 };
 export const regions: Record<Region, string> = {
   kanto: "关都",

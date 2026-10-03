@@ -18,6 +18,7 @@ import {
 } from "./types";
 import { Field, Pagination, Empty, EventCard, ReportCard } from "./ui";
 import { localInput, utc } from "./time";
+import { NotificationSettings } from "./notification-settings";
 const emptyList = <T,>(): List<T> => ({
   items: [],
   total: 0,
@@ -33,7 +34,7 @@ export function AdminPanel({
   onSuccess: (s: string) => void;
   currentUser: User;
 }) {
-  const [tab, setTab] = useState<"reports" | "events" | "users">("reports");
+  const [tab, setTab] = useState<"reports" | "events" | "users" | "settings">("reports");
   const [data, setData] = useState<List<Report | Event | User>>(emptyList);
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -46,6 +47,7 @@ export function AdminPanel({
   const [appliedQuery, setAppliedQuery] = useState("");
   const generation = useRef(0);
   const load = useCallback(async () => {
+    if (tab === "settings") { setLoading(false); return; }
     const id = ++generation.current;
     setLoading(true);
     try {
@@ -101,6 +103,7 @@ export function AdminPanel({
             ["reports", "待审队列"],
             ["events", "情报管理"],
             ["users", "账号管理"],
+            ["settings", "推送设置"],
           ].map(([id, label]) => (
             <button
               key={id}
@@ -118,15 +121,17 @@ export function AdminPanel({
             </button>
           ))}
         </div>
-        <button
+        {tab !== "settings" && <button
           className="button secondary"
           onClick={() => void load()}
           disabled={loading || busy}
         >
           <RefreshCw size={16} />
           刷新队列
-        </button>
+        </button>}
       </div>
+      {tab === "settings" && <NotificationSettings onError={onError} onSuccess={onSuccess} />}
+      {tab !== "settings" && <>
       {tab === "users" && (
         <form
           className="admin-search"
@@ -255,6 +260,7 @@ export function AdminPanel({
         )}
       </div>
       <Pagination data={data} onPage={setPage} />
+      </>}
       {editing && (
         <EditEvent
           item={editing}
