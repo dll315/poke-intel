@@ -1,0 +1,8 @@
+node_modules/
+dist/
+data/
+.env
+.worktrees/
+.superpowers/
+playwright-report/
+test-results/
