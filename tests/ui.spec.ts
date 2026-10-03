@@ -60,6 +60,7 @@ test("管理员可在推送设置中保存、测试、停用和清除机器人",
     if(method==="POST"&&url.endsWith("/test"))return route.fulfill({json:{ok:true}});
     return route.fulfill({json:state});
   });
+  await page.route("**/api/v1/admin/monitor",route=>route.fulfill({json:{enabled:true,intervalSeconds:30,lastCheckedAt:"2026-10-04T01:01:00.000Z",lastSuccessAt:"2026-10-04T01:01:00.000Z",lastEvent:{pokemon:"Honchkrow",region:"sinnoh",location:"Route 209",observedAt:"2026-10-03T16:06:41.000Z"},consecutiveFailures:0,lastError:null}}));
   await page.goto("/");
   await page.getByRole("button",{name:"登录 / 注册",exact:true}).click();
   await page.getByLabel("邮箱",{exact:true}).fill("browser-admin@example.com");
@@ -67,6 +68,9 @@ test("管理员可在推送设置中保存、测试、停用和清除机器人",
   await page.getByRole("button",{name:"登录",exact:true}).click();
   await page.getByRole("button",{name:"管理后台",exact:true}).click();
   await page.getByRole("button",{name:"推送设置",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"头目实时监控",exact:true})).toBeVisible();
+  await expect(page.getByText("每 30 秒检查",{exact:true})).toBeVisible();
+  await expect(page.getByText(/Honchkrow.*Route 209/)).toBeVisible();
   await expect(page.getByText("key=**********t-key",{exact:true})).toBeVisible();
   await expect(page.getByText("ui-secret-key")).toHaveCount(0);
   await page.getByLabel("企业微信机器人 Webhook").fill(secret);

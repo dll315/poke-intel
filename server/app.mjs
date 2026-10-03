@@ -14,6 +14,7 @@ import {ApiError} from './validation.mjs';
 import {validateWecomWebhook,createNotifications} from './notifications.mjs';
 import {createCatalog} from './catalog.mjs';
 import {createSettings} from './settings.mjs';
+import {createAlphaMonitor} from './alpha-monitor.mjs';
 
 const proxyPeers=new BlockList();
 for(const [address,bits] of [['127.0.0.0',8],['10.0.0.0',8],['172.16.0.0',12],['192.168.0.0',16]])proxyPeers.addSubnet(address,bits,'ipv4');
@@ -24,7 +25,7 @@ function trustImmediatePrivateProxy(address,hop) {
   return version>0&&proxyPeers.check(normalized,version===4?'ipv4':'ipv6');
 }
 
-export async function buildApp({dbPath='data/poke.db',origin='http://localhost:3001',allowedOrigins=[origin],now=Date.now,trustProxy=false,wecomWebhookUrl='',settingsEncryptionKey='',notificationFetch=globalThis.fetch,notificationsAutoStart=true,catalog={}}={}) {
+export async function buildApp({dbPath='data/poke.db',origin='http://localhost:3001',allowedOrigins=[origin],now=Date.now,trustProxy=false,wecomWebhookUrl='',settingsEncryptionKey='',notificationFetch=globalThis.fetch,notificationsAutoStart=true,catalog={},alphaMonitor={}}={}) {
   const webhookUrl=validateWecomWebhook(wecomWebhookUrl);
   const expectedOrigin=new URL(origin).origin;
   if(expectedOrigin!==origin)throw new Error('ORIGIN must contain only scheme, host and optional port');
@@ -80,9 +81,11 @@ export async function buildApp({dbPath='data/poke.db',origin='http://localhost:3
   const notifications=createNotifications({db,now,origin,settings,fetchImpl:notificationFetch});
   app.decorate('notifications',notifications);
   const externalCatalog=createCatalog({db,now,...catalog});app.decorate('catalog',externalCatalog);
+  if(alphaMonitor.enabled&&!externalCatalog.enabled)throw new Error('头目实时监控要求启用并确认 Alphapedia 数据来源');
+  const monitor=createAlphaMonitor({db,now,notifications,...alphaMonitor,autoStart:false});app.decorate('alphaMonitor',monitor);
   app.get('/api/v1/catalog',request=>externalCatalog.list(request.query));
   app.get('/api/v1/catalog/status',()=>externalCatalog.status());
-  const context={db,now,origin,limit,notifications,settings,catalog:externalCatalog};registerAuth(app,context);registerEvents(app,context);registerReports(app,context);registerAdmin(app,context);
+  const context={db,now,origin,limit,notifications,settings,catalog:externalCatalog,alphaMonitor:monitor};registerAuth(app,context);registerEvents(app,context);registerReports(app,context);registerAdmin(app,context);
   const dist=fileURLToPath(new URL('../dist/',import.meta.url));
   const hasClient=existsSync(dist+'index.html');
   if(hasClient)await app.register(staticFiles,{root:dist,prefix:'/',index:['index.html'],list:false});
@@ -94,6 +97,6 @@ export async function buildApp({dbPath='data/poke.db',origin='http://localhost:3
     const at=new Date(now()).toISOString();expireEvents(db,at);db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(at);
     for(const [key,bucket] of limits)if(bucket.end<=now())limits.delete(key);
   },60000);maintenance.unref();
-  app.addHook('onClose',async()=>{clearInterval(maintenance);externalCatalog.close();await notifications.close();db.close();});
-  await app.ready();if(notificationsAutoStart)notifications.start();if(catalog.autoStart!==false)externalCatalog.start();return app;
+  app.addHook('onClose',async()=>{clearInterval(maintenance);externalCatalog.close();await monitor.close();await notifications.close();db.close();});
+  await app.ready();if(notificationsAutoStart)notifications.start();if(catalog.autoStart!==false)externalCatalog.start();if(alphaMonitor.autoStart!==false)monitor.start();return app;
 }

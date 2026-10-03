@@ -3,15 +3,18 @@ import {Bell,Send,Trash2} from 'lucide-react';
 import {request} from './api';
 
 type Status={enabled:boolean;configured:boolean;source:'database'|'environment'|'none'|'error';masked:string|null;canSaveWebhook:boolean;configurationError:boolean;counts:{pending:number;sending:number;sent:number;failed:number;skipped:number};lastSentAt:string|null;lastError:string|null};
+type MonitorStatus={enabled:boolean;intervalSeconds:number;lastCheckedAt:string|null;lastSuccessAt:string|null;lastEvent:{pokemon:string;region:string;location:string;observedAt:string}|null;consecutiveFailures:number;lastError:string|null};
 
 export function NotificationSettings({onError,onSuccess}:{onError:(error:unknown)=>void;onSuccess:(message:string)=>void}){
   const [status,setStatus]=useState<Status|null>(null);const [enabled,setEnabled]=useState(false);const [webhookUrl,setWebhookUrl]=useState('');const [busy,setBusy]=useState(false);
-  const load=useCallback(async()=>{try{const next=await request<Status>('/admin/settings/notifications');setStatus(next);setEnabled(next.enabled);}catch(error){onError(error);}},[onError]);
+  const [monitor,setMonitor]=useState<MonitorStatus|null>(null);
+  const load=useCallback(async()=>{try{const [next,monitorStatus]=await Promise.all([request<Status>('/admin/settings/notifications'),request<MonitorStatus>('/admin/monitor')]);setStatus(next);setEnabled(next.enabled);setMonitor(monitorStatus);}catch(error){onError(error);}},[onError]);
   useEffect(()=>{void load();},[load]);
   const act=async(action:()=>Promise<unknown>,message:string)=>{setBusy(true);try{await action();setWebhookUrl('');await load();onSuccess(message);}catch(error){onError(error);}finally{setBusy(false);}};
   const save=(event:FormEvent)=>{event.preventDefault();void act(()=>request('/admin/settings/notifications',{method:'PUT',body:{enabled,...(webhookUrl.trim()?{webhookUrl:webhookUrl.trim()}: {})}}),'推送设置已保存。');};
   if(!status)return <div className="loading-state">正在读取推送设置…</div>;
   return <section className="panel notification-settings">
+    {monitor&&<div className="monitor-card"><div><h2>头目实时监控</h2><p>{monitor.enabled?`每 ${monitor.intervalSeconds} 秒检查`:'未启用'}</p></div><div className="monitor-event">{monitor.lastEvent?<><strong>{monitor.lastEvent.pokemon} · {monitor.lastEvent.location}</strong><span>{monitor.lastEvent.region} · 最近成功 {monitor.lastSuccessAt?new Date(monitor.lastSuccessAt).toLocaleString('zh-CN'):'暂无'}</span></>:<><strong>尚未发现头目</strong><span>{monitor.lastError||'等待第一次检查'}</span></>}</div></div>}
     <div className="settings-heading"><span className="signal"><Bell size={19}/></span><div><h2>企业微信机器人</h2><p>审核通过的新情报会自动推送到企业微信群。</p></div></div>
     {status.configurationError&&<div className="alert" role="alert">已保存的机器人配置无法解密，请重新填写。</div>}
     {!status.canSaveWebhook&&<div className="alert" role="alert">服务器尚未配置 SETTINGS_ENCRYPTION_KEY，暂时不能从网页保存机器人。</div>}

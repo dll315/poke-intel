@@ -31,9 +31,13 @@ npm run dev
 ```env
 ALPHAPEDIA_ENABLED=1
 ALPHAPEDIA_PERMISSION_CONFIRMED=1
+ALPHA_MONITOR_ENABLED=1
+ALPHA_MONITOR_INTERVAL_SECONDS=30
 ```
 
 页面会保留 Alphapedia 来源链接，不复制其图片资源。首次启动会立即同步，之后可在“刷新资料库”中按类型、地区、宝可梦或地点查询。
+
+启用头目实时监控后，后台每 30 秒检查一次 Alphapedia 首页状态。新头目在发布时间后 75 分钟内会自动加入实时情报，并按企业微信设置推送一次；过期状态只用于更新监控游标。去重信息保存在 SQLite，服务器重启不会重复推送。管理员可在“管理后台 → 推送设置”查看最近检查、最近发现和错误状态。
 
 创建管理员：
 

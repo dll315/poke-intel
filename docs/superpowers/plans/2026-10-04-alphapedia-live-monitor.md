@@ -1,6 +1,6 @@
 # Alphapedia Live Monitor Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Poll Alphapedia every 30 seconds, publish each new valid Alpha as an external live event, and enqueue one Enterprise WeChat notification.
 
@@ -33,11 +33,11 @@
 - Produces: `parseLandingStatus(payload): {sourceEventId,pokemon,region,location,observedAt,expiresAt,sourceUrl}`.
 - Produces: `publishExternalEvent({db,notifications,event,now}): {published:boolean,eventId?:number}`.
 
-- [ ] Write failing tests for complete parsing, malformed payload rejection, expired first state, active publication, duplicate publication, and transaction rollback.
-- [ ] Run `node --test tests/alpha-monitor.test.mjs`; expect missing module failure.
-- [ ] Add `external_monitor_state` and implement strict parsing without executing remote HTML.
-- [ ] Implement transactional direct publication with `reports(source='external')`, active event, audit, and outbox enqueue.
-- [ ] Re-run the focused test; expect PASS.
+- [x] Write failing tests for complete parsing, malformed payload rejection, expired first state, active publication, duplicate publication, and transaction rollback.
+- [x] Run `node --test tests/alpha-monitor.test.mjs`; expect missing module failure.
+- [x] Add `external_monitor_state` and implement strict parsing without executing remote HTML.
+- [x] Implement transactional direct publication with `reports(source='external')`, active event, audit, and outbox enqueue.
+- [x] Re-run the focused test; expect PASS.
 
 ### Task 2: Polling Lifecycle and Server Wiring
 
@@ -53,11 +53,11 @@
 - Produces: `createAlphaMonitor({db,notifications,fetchImpl,now,enabled,intervalMs,baseUrl,autoStart})` with `start`, `runOnce`, `close`, `status`.
 - Produces: `app.alphaMonitor` and `GET /api/v1/admin/monitor`.
 
-- [ ] Write failing tests for cookie/token flow, duplicate polls, token refresh after 403, failure recovery, concurrent calls, close abort, and sanitized status.
-- [ ] Run focused tests; expect missing lifecycle behavior.
-- [ ] Implement session establishment, cookie handling, token extraction, status fetch, serialized runs, persisted health, and safe shutdown.
-- [ ] Wire `ALPHA_MONITOR_ENABLED` and `ALPHA_MONITOR_INTERVAL_SECONDS`, require external source enablement, and register the admin status route.
-- [ ] Run `node --test tests/alpha-monitor.test.mjs tests/wecom.test.mjs`; expect PASS.
+- [x] Write failing tests for cookie/token flow, duplicate polls, token refresh after 403, failure recovery, concurrent calls, close abort, and sanitized status.
+- [x] Run focused tests; expect missing lifecycle behavior.
+- [x] Implement session establishment, cookie handling, token extraction, status fetch, serialized runs, persisted health, and safe shutdown.
+- [x] Wire `ALPHA_MONITOR_ENABLED` and `ALPHA_MONITOR_INTERVAL_SECONDS`, require external source enablement, and register the admin status route.
+- [x] Run `node --test tests/alpha-monitor.test.mjs tests/wecom.test.mjs`; expect PASS.
 
 ### Task 3: Admin Status UI, Documentation, and Verification
 
@@ -73,9 +73,9 @@
 - Consumes: `GET /api/v1/admin/monitor`.
 - Produces: monitor health card inside the administrator push settings page.
 
-- [ ] Write a failing browser assertion for enabled state, 30-second cadence, last check, last event, and sanitized error.
-- [ ] Run `npx playwright test --grep "头目实时监控"`; expect missing UI failure.
-- [ ] Add the monitor status card with loading and unavailable states.
-- [ ] Document configuration, effective-time rules, upstream dependency, and operational checks.
-- [ ] Run `npm test`, `npm run build`, `npm run test:production`, `npm run test:ui`, and `git diff --check`; expect all PASS.
-- [ ] Run one real read-only Alphapedia parse and confirm a complete structured event without publishing it.
+- [x] Write a failing browser assertion for enabled state, 30-second cadence, last check, last event, and sanitized error.
+- [x] Run `npx playwright test --grep "头目实时监控"`; expect missing UI failure.
+- [x] Add the monitor status card with loading and unavailable states.
+- [x] Document configuration, effective-time rules, upstream dependency, and operational checks.
+- [x] Run `npm test`, `npm run build`, `npm run test:production`, `npm run test:ui`, and `git diff --check`; expect all PASS.
+- [x] Run one real read-only Alphapedia parse and confirm a complete structured event without publishing it.

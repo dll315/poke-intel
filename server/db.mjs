@@ -54,6 +54,11 @@ export function openDb(dbPath='data/poke.db') {
       key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL,
       updated_by INTEGER REFERENCES users(id)
     );
+    CREATE TABLE IF NOT EXISTS external_monitor_state (
+      source TEXT PRIMARY KEY, last_checked_at TEXT, last_success_at TEXT,
+      last_event_id TEXT, last_event_json TEXT, last_error TEXT,
+      consecutive_failures INTEGER NOT NULL DEFAULT 0
+    );
     CREATE INDEX IF NOT EXISTS idx_notifications_due ON notification_outbox(state,next_attempt_at);
     CREATE INDEX IF NOT EXISTS idx_reports_user_time ON reports(user_id,created_at);
     CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status,created_at);

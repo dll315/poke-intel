@@ -39,6 +39,7 @@ Report：`{id,kind,pokemon,region,location,observedAt,note,status,reason,eventId
 - `PUT /admin/settings/notifications` 输入 `{enabled:boolean,webhookUrl?:string}`：保存启用状态，并在提供 Webhook 时加密保存。
 - `DELETE /admin/settings/notifications/webhook`：删除数据库中的 Webhook，恢复环境变量后备配置。
 - `POST /admin/settings/notifications/test`：向当前启用的机器人发送固定测试消息。
+- `GET /admin/monitor`：返回 Alphapedia 头目监控的启用状态、检查频率、最近检查、最近成功、最近事件、连续失败次数和脱敏错误。
 
 - `GET /admin/reports` → Report 列表，默认 pending，可筛选 `status`。
 - `POST /admin/reports/:id/review` 输入 `{action:'approve'|'reject',reason?,expiresAt?}` → `{report:Report,event:Event|null}`。驳回必须填写 reason（1–500）；默认有效截止为 observedAt 后 60 分钟。重复批准返回原结果，不能变更已审结果（409）。
