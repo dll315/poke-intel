@@ -67,4 +67,3 @@ await expect(page.getByRole('heading',{name:'实时情报'})).toBeVisible();
 ## Decisions
 
 Use native Node 24 SQLite to avoid native addon installation on Windows/Ubuntu. Document Node's current SQLite maturity. No external source adapter enabled without permission. First MVP uses plain named Pokemon entries; full national dex validation belongs to a later catalog feature.
-
