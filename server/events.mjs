@@ -1,13 +1,14 @@
 import {pagination,parse,kind,region,ApiError,positiveId,beijingDateBounds,like} from './validation.mjs';
 import {z} from 'zod';
 import {translatePokemon} from './catalog.mjs';
+import {translateLocation} from './location-zh.mjs';
 
 export function expireEvents(db,at) {
   db.prepare("UPDATE events SET status='ended' WHERE status='active' AND expires_at<=?").run(at);
 }
 export function eventView(db,row) {
   if(!row)return null;
-  return {id:row.id,kind:row.kind,pokemon:translatePokemon(db,row.pokemon),pokemonOriginal:row.pokemon,region:row.region,location:row.location,
+  return {id:row.id,kind:row.kind,pokemon:translatePokemon(db,row.pokemon),pokemonOriginal:row.pokemon,region:row.region,location:row.location,locationZh:translateLocation(row.location,row.region),
     observedAt:row.observed_at,expiresAt:row.expires_at,lastConfirmedAt:row.last_confirmed_at,
     status:row.status,source:row.source,sourceUrl:row.source_url,note:row.note,correctionReason:row.correction_reason,
     contributors:db.prepare("SELECT DISTINCT u.nickname FROM reports r JOIN users u ON u.id=r.user_id WHERE r.event_id=? AND r.status='approved' ORDER BY u.nickname").all(row.id)};

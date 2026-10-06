@@ -11,7 +11,7 @@ const key='11'.repeat(32);
 
 function fixture(options={}){
   const db=openDb(':memory:');
-  const user=createUser(db,{email:'admin@example.com',nickname:'管理员',password:'password12345',role:'admin'});
+  const user=createUser(db,{username:'admin',nickname:'管理员',password:'password12345',role:'admin'});
   let clock=Date.parse('2026-10-04T01:00:00Z');
   const settings=createSettings({db,encryptionKey:key,environmentWebhook,now:()=>clock,...options});
   return{db,user,settings,advance:ms=>clock+=ms};
@@ -57,10 +57,10 @@ test('admin notification settings API applies immediately and test messages neve
   const sent=[];const origin='https://poke.example.test';
   const app=await buildApp({dbPath:':memory:',origin,wecomWebhookUrl:environmentWebhook,settingsEncryptionKey:key,notificationFetch:async(url,options)=>{sent.push({url:String(url),body:JSON.parse(options.body)});return Response.json({errcode:0});},notificationsAutoStart:false});
   t.after(()=>app.close());
-  createUser(app.db,{email:'admin-api@example.com',nickname:'管理员',password:'password12345',role:'admin'});
-  createUser(app.db,{email:'player-api@example.com',nickname:'玩家',password:'password12345',role:'user'});
-  const login=async email=>{const response=await app.inject({method:'POST',url:'/api/v1/auth/login',headers:{origin},payload:{email,password:'password12345'}});return{origin,cookie:response.headers['set-cookie'].split(';')[0],'x-csrf-token':response.json().csrfToken};};
-  const admin=await login('admin-api@example.com'),player=await login('player-api@example.com');
+  createUser(app.db,{username:'admin-api',nickname:'管理员',password:'password12345',role:'admin'});
+  createUser(app.db,{username:'player-api',nickname:'玩家',password:'password12345',role:'user'});
+  const login=async username=>{const response=await app.inject({method:'POST',url:'/api/v1/auth/login',headers:{origin},payload:{username,password:'password12345'}});return{origin,cookie:response.headers['set-cookie'].split(';')[0],'x-csrf-token':response.json().csrfToken};};
+  const admin=await login('admin-api'),player=await login('player-api');
   assert.equal((await app.inject({url:'/api/v1/admin/settings/notifications',headers:player})).statusCode,403);
   let response=await app.inject({url:'/api/v1/admin/settings/notifications',headers:admin});assert.equal(response.statusCode,200);assert.equal(response.json().source,'environment');assert.equal(response.body.includes('environment-secret-key'),false);
   assert.equal((await app.inject({method:'PUT',url:'/api/v1/admin/settings/notifications',headers:admin,payload:{enabled:'yes',webhookUrl:'https://evil.test'}})).statusCode,422);
@@ -70,4 +70,20 @@ test('admin notification settings API applies immediately and test messages neve
   assert.equal((await app.inject({method:'POST',url:'/api/v1/admin/settings/notifications/test',headers:admin,payload:{}})).statusCode,409);
   response=await app.inject({method:'DELETE',url:'/api/v1/admin/settings/notifications/webhook',headers:admin});assert.equal(response.json().source,'environment');
   assert.equal(response.body.includes('database-secret-key'),false);
+});
+
+test('admin can add, test, disable and delete an extra robot link without exposing its key',async t=>{
+  const sent=[],origin='https://poke.example.test',extra='https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=extra-secret-key';
+  const app=await buildApp({dbPath:':memory:',origin,settingsEncryptionKey:key,notificationFetch:async url=>{sent.push(String(url));return Response.json({errcode:0});},notificationsAutoStart:false});t.after(()=>app.close());
+  createUser(app.db,{username:'link-admin',nickname:'管理员',password:'password12345',role:'admin'});
+  const login=await app.inject({method:'POST',url:'/api/v1/auth/login',headers:{origin},payload:{username:'link-admin',password:'password12345'}});
+  const headers={origin,cookie:login.headers['set-cookie'].split(';')[0],'x-csrf-token':login.json().csrfToken};
+  const add=await app.inject({method:'POST',url:'/api/v1/admin/settings/notification-links',headers,payload:{label:'第二个群',webhookUrl:extra,enabled:true}});
+  assert.equal(add.statusCode,201,add.body);const id=add.json().id;
+  assert.equal(add.body.includes('extra-secret-key'),false);
+  assert.equal((await app.inject({url:'/api/v1/admin/settings/notification-links',headers})).json().length,1);
+  assert.equal((await app.inject({method:'POST',url:`/api/v1/admin/settings/notification-links/${id}/test`,headers,payload:{}})).statusCode,200);
+  assert.deepEqual(sent,[extra]);
+  assert.equal((await app.inject({method:'PATCH',url:`/api/v1/admin/settings/notification-links/${id}`,headers,payload:{enabled:false}})).json().enabled,false);
+  assert.equal((await app.inject({method:'DELETE',url:`/api/v1/admin/settings/notification-links/${id}`,headers})).statusCode,200);
 });

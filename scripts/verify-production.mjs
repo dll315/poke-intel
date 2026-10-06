@@ -15,8 +15,8 @@ try {
   const unknown = await app.inject('/api/v1/not-found');
   assert.equal(unknown.statusCode,404);
   assert.match(unknown.headers['content-type'],/application\/json/);
-  createUser(app.db,{email:'smoke@example.test',nickname:'验证账号',password:'smoke-verification-password'});
-  const login = await app.inject({method:'POST',url:'/api/v1/auth/login',headers:{origin},payload:{email:'smoke@example.test',password:'smoke-verification-password'}});
+  createUser(app.db,{username:'smoke',nickname:'验证账号',password:'smoke-verification-password'});
+  const login = await app.inject({method:'POST',url:'/api/v1/auth/login',headers:{origin},payload:{username:'smoke',password:'smoke-verification-password'}});
   assert.equal(login.statusCode,200);
   const cookie=login.headers['set-cookie'];
   assert.match(cookie,/Secure/); assert.match(cookie,/HttpOnly/); assert.match(cookie,/SameSite=Lax/);

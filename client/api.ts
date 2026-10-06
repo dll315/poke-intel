@@ -8,6 +8,7 @@ export class ApiError extends Error {
   }
 }
 let csrfToken = "";
+const apiOrigin = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 export function setCsrfToken(token: string) {
   csrfToken = token;
 }
@@ -18,9 +19,9 @@ export async function request<T>(
   const method = options.method ?? "GET";
   let response: Response;
   try {
-    response = await fetch(`/api/v1${path}`, {
+    response = await fetch(`${apiOrigin}/api/v1${path}`, {
       method,
-      credentials: "same-origin",
+      credentials: apiOrigin ? "include" : "same-origin",
       signal: options.signal,
       headers: {
         ...(options.body ? { "Content-Type": "application/json" } : {}),

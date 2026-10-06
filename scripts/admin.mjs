@@ -1,5 +1,5 @@
 import { openDb, transaction, audit } from '../server/db.mjs';
-import { createUser } from '../server/auth.mjs';
+import { createUser, hashPassword } from '../server/auth.mjs';
 
 async function readPassword() {
   if (!process.stdin.isTTY) {
@@ -28,27 +28,31 @@ async function readPassword() {
 }
 
 try {
-  const [emailArg, nickname = '管理员'] = process.argv.slice(2);
-  const email = emailArg?.trim().toLowerCase();
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new Error('用法：npm run admin -- 有效邮箱 昵称');
+  const [usernameArg, nickname = '管理员', flag] = process.argv.slice(2);
+  const username = usernameArg?.trim().toLowerCase();
+  if (!username || !/^[a-z0-9_-]{3,30}$/.test(username)) throw new Error('用法：npm run admin -- 用户名 昵称 [--reset-password]');
+  if(flag && flag!=='--reset-password')throw new Error('未知参数');
   if (!nickname.trim() || nickname.length > 30) throw new Error('昵称长度须为 1–30 个字符。');
   const db = openDb(process.env.DB_PATH || 'data/poke.db');
   try {
-    const existing = db.prepare('SELECT id,role,disabled FROM users WHERE email=?').get(email);
+    const existing = db.prepare('SELECT id,role,disabled FROM users WHERE username=?').get(username);
     if (existing) {
+      const password=flag==='--reset-password'?await readPassword():null;
+      if(password!==null&&(password.length<6||password.length>128))throw new Error('管理员密码长度须为 6–128 个字符。');
       transaction(db, () => {
-        db.prepare("UPDATE users SET role='admin', disabled=0 WHERE id=?").run(existing.id);
+        db.prepare("UPDATE users SET role='admin', disabled=0, password_hash=COALESCE(?,password_hash), session_generation=session_generation+? WHERE id=?").run(password===null?null:hashPassword(password),password===null?0:1,existing.id);
+        if(password!==null)db.prepare('DELETE FROM sessions WHERE user_id=?').run(existing.id);
         audit(db,null,'user.cli-promote','user',existing.id,{origin:'admin-cli',previousRole:existing.role,previousDisabled:Boolean(existing.disabled)},new Date().toISOString());
       });
-      console.log('现有账号已提升为管理员，原密码保持不变。');
+      console.log(password===null?'现有账号已提升为管理员，原密码保持不变。':'管理员密码已重设，旧登录会话已退出。');
     } else {
       const password = await readPassword();
-      if (password.length < 10 || password.length > 128) throw new Error('密码长度须为 10–128 个字符。');
+      if (password.length < 6 || password.length > 128) throw new Error('管理员密码长度须为 6–128 个字符。');
       transaction(db, () => {
-        const user = createUser(db, {email,nickname:nickname.trim(),password,role:'admin'});
+        const user = createUser(db, {username,nickname:nickname.trim(),password,role:'admin'});
         audit(db,null,'user.cli-create','user',user.id,{origin:'admin-cli'},new Date().toISOString());
       });
-      console.log('管理员已创建，请在网页使用该邮箱和密码登录。');
+      console.log('管理员已创建，请在网页使用用户名和密码登录。');
     }
   } finally { db.close(); }
 } catch (error) { console.error(error.message); process.exitCode = 1; }

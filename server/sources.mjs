@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {parse,reportInput,dateTime,ApiError} from './validation.mjs';
+import {parse,reportBaseInput,dateTime,ApiError} from './validation.mjs';
 import {insertReport} from './reports.mjs';
 import {transaction} from './db.mjs';
 
@@ -8,7 +8,7 @@ import {transaction} from './db.mjs';
 export async function importSourceRecords(db,records,{enabled=false,permissionConfirmed=false,source,now=Date.now}={}) {
   if(!enabled||!permissionConfirmed)throw new Error('External source imports disabled / 外部来源未启用或未核实许可');
   if(typeof source!=='string'||!source.trim()||source.length>100)throw new ApiError(422,'必须指定已获许可的来源');
-  const schema=reportInput.extend({source:z.literal(source),sourceEventId:z.string().min(1).max(200),expiresAt:dateTime,sourceUrl:z.string().url().max(2000).refine(v=>['https:','http:'].includes(new URL(v).protocol))}).strict();
+  const schema=reportBaseInput.omit({phenomenonType:true}).extend({kind:z.enum(['boss','swarm']),pokemon:z.string().trim().min(1).max(50),source:z.literal(source),sourceEventId:z.string().min(1).max(200),expiresAt:dateTime,sourceUrl:z.string().url().max(2000).refine(v=>['https:','http:'].includes(new URL(v).protocol))}).strict();
   const validated=records.map(record=>parse(schema,record));
   return transaction(db,()=>{
     let imported=0;let skipped=0;

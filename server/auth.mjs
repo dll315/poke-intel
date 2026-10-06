@@ -1,16 +1,15 @@
 import {randomBytes,scryptSync,scrypt,timingSafeEqual,createHash} from 'node:crypto';
 import {promisify} from 'node:util';
-import {parse,registration,credentials,ApiError} from './validation.mjs';
+import {parse,registration,adminRegistration,credentials,ApiError} from './validation.mjs';
 
 const asyncScrypt=promisify(scrypt);
-export const safeUser=row=>({id:row.id,email:row.email,nickname:row.nickname,role:row.role,disabled:Boolean(row.disabled)});
+export const safeUser=row=>({id:row.id,username:row.username,nickname:row.nickname,role:row.role,disabled:Boolean(row.disabled)});
 export const tokenHash=token=>createHash('sha256').update(token).digest('hex');
-export function createUser(db,{email,nickname,password,role='user'}) {
-  const data=parse(registration,{email,nickname,password});
+export function hashPassword(password){const salt=randomBytes(16).toString('hex');return salt+':'+scryptSync(password,salt,64).toString('hex');}
+export function createUser(db,{username,nickname,password,role='user'}) {
+  const data=parse(role==='admin'?adminRegistration:registration,{username,nickname,password});
   if(!['user','admin'].includes(role))throw new Error('Invalid role');
-  const salt=randomBytes(16).toString('hex');
-  const passwordHash=salt+':'+scryptSync(data.password,salt,64).toString('hex');
-  const result=db.prepare('INSERT INTO users(email,nickname,password_hash,role,created_at) VALUES(?,?,?,?,?)').run(data.email,data.nickname,passwordHash,role,new Date().toISOString());
+  const result=db.prepare('INSERT INTO users(username,nickname,password_hash,role,created_at) VALUES(?,?,?,?,?)').run(data.username,data.nickname,hashPassword(data.password),role,new Date().toISOString());
   return safeUser(db.prepare('SELECT * FROM users WHERE id=?').get(Number(result.lastInsertRowid)));
 }
 
@@ -27,15 +26,15 @@ export function registerAuth(app,{db,now,origin,limit}) {
   app.post('/api/v1/auth/register',async(request,reply)=>{
     const data=parse(registration,request.body);limit('register:'+request.ip,5,3600000);
     try {const user=createUser(db,data);reply.code(201);return beginSession(user,reply);}
-    catch(error){if(error.code==='ERR_SQLITE_ERROR'&&error.message.includes('UNIQUE'))throw new ApiError(409,'该邮箱已注册',{email:'该邮箱已注册'});throw error;}
+    catch(error){if(error.code==='ERR_SQLITE_ERROR'&&error.message.includes('UNIQUE'))throw new ApiError(409,'该用户名已注册',{username:'该用户名已注册'});throw error;}
   });
   app.post('/api/v1/auth/login',async(request,reply)=>{
     const data=parse(credentials,request.body);
-    limit('login-ip:'+request.ip,30,15*60000);limit('login-account:'+data.email,10,15*60000);
-    const row=db.prepare('SELECT * FROM users WHERE email=?').get(data.email);
+    limit('login-ip:'+request.ip,30,15*60000);limit('login-account:'+data.username,10,15*60000);
+    const row=db.prepare('SELECT * FROM users WHERE username=?').get(data.username);
     const [salt,stored]=row?.password_hash.split(':')||['invalid-login-salt','0'.repeat(128)];
     const candidate=await asyncScrypt(data.password,salt,64);
-    if(!timingSafeEqual(candidate,Buffer.from(stored,'hex'))||!row||row.disabled)throw new ApiError(401,'邮箱或密码错误，或账号已停用');
+    if(!timingSafeEqual(candidate,Buffer.from(stored,'hex'))||!row||row.disabled)throw new ApiError(401,'用户名或密码错误，或账号已停用');
     const current=db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(row.id);
     if(!current||current.session_generation!==row.session_generation)throw new ApiError(401,'账号状态已变更，请重新登录');
     return beginSession(safeUser(current),reply);

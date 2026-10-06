@@ -143,7 +143,7 @@ export function AdminPanel({
         >
           <input
             aria-label="搜索账号"
-            placeholder="搜索昵称或邮箱"
+            placeholder="搜索昵称或用户名"
             value={userQuery}
             onChange={(e) => setUserQuery(e.target.value)}
           />
@@ -213,7 +213,7 @@ export function AdminPanel({
               </span>
               <div>
                 <strong>{(item as User).nickname}</strong>
-                <span>{(item as User).email}</span>
+                <span>{(item as User).username}</span>
                 <small>
                   {(item as User).role === "admin" ? "管理员" : "普通用户"} ·{" "}
                   {(item as User).disabled ? "已停用" : "正常"}

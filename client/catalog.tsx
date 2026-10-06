@@ -22,7 +22,7 @@ export function Catalog({onError}:{onError:(error:unknown)=>string}){
     <section className="catalog-grid" aria-busy={loading}>{loading&&!items.items.length?<div className="loading-state"><RefreshCw size={22} className="spinning"/>正在读取资料库…</div>:items.items.length?items.items.map(item=><article className="catalog-card" key={item.id}>
       <div className="card-top"><span className={`tag ${item.kind}`}>{item.kind==='boss'?'头目':'群聚'}</span>{item.tier!==null&&<span className="catalog-tier">Tier {item.tier}</span>}</div>
       <h3>{item.pokemon}</h3><p className="catalog-original">{item.pokemonOriginal}</p><p className="catalog-dex">{item.nationalDex?`全国图鉴 #${item.nationalDex}`:'暂无图鉴编号'}</p>
-      <dl><div><dt>地区</dt><dd>{regions[item.region]}</dd></div><div><dt>地点</dt><dd>{item.location}</dd></div>{item.locationNote&&<div><dt>说明</dt><dd>{item.locationNote}</dd></div>}{item.hms.length>0&&<div><dt>所需秘传</dt><dd>{item.hms.join('、')}</dd></div>}</dl>
+      <dl><div><dt>地区</dt><dd>{regions[item.region]}</dd></div><div><dt>地点</dt><dd>{item.locationZh||item.location}</dd></div>{item.locationNote&&<div><dt>说明</dt><dd>{item.locationNote}</dd></div>}{item.hms.length>0&&<div><dt>所需秘传</dt><dd>{item.hms.join('、')}</dd></div>}{item.kind==='boss'&&item.moveset?.length>0&&<div><dt>来源资料配招</dt><dd>{item.moveset.join('、')}</dd></div>}</dl>
       <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">查看 Alphapedia 来源 <ExternalLink size={13}/></a>
     </article>):<Empty title="未找到资料" description="请更换宝可梦、地点或地区后重试。"/>}</section>
     <Pagination data={items} onPage={page=>void load(page)}/><p className="catalog-note">此处展示刷新地点参考资料，不代表当前正在发生的实时事件。请以游戏内情况为准。</p>

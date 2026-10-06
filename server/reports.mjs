@@ -1,11 +1,12 @@
 import {parse,reportInput,pagination,beijingDateBounds,ApiError} from './validation.mjs';
 import {z} from 'zod';
 import {transaction} from './db.mjs';
+import {translateLocation} from './location-zh.mjs';
 
 export function reportView(db,row) {
   if(!row)return null;
   const reporter=row.user_id?db.prepare('SELECT nickname FROM users WHERE id=?').get(row.user_id):{nickname:'外部来源'};
-  return {id:row.id,kind:row.kind,pokemon:row.pokemon,region:row.region,location:row.location,observedAt:row.observed_at,note:row.note,status:row.status,reason:row.reason,eventId:row.event_id,source:row.source,sourceUrl:row.source_url,createdAt:row.created_at,reporter};
+  return {id:row.id,kind:row.kind,pokemon:row.pokemon,region:row.region,location:row.location,locationZh:translateLocation(row.location,row.region),observedAt:row.observed_at,note:row.note,status:row.status,reason:row.reason,eventId:row.event_id,source:row.source,sourceUrl:row.source_url,createdAt:row.created_at,reporter};
 }
 export function listReports(db,query,userId,defaultPending=false) {
   const {page,pageSize}=pagination(query);const status=parse(z.enum(['pending','approved','rejected']).optional(),query.status||(defaultPending?'pending':undefined));

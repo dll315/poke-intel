@@ -7,7 +7,7 @@ test.beforeAll(() => {
     [
       "--input-type=module",
       "-e",
-      "import {openDb} from './server/db.mjs'; import {createUser} from './server/auth.mjs'; const db=openDb(process.env.UI_DB_PATH);if(!db.prepare('SELECT id FROM users WHERE email=?').get('browser-admin@example.com'))createUser(db,{email:'browser-admin@example.com',nickname:'审核管理员',password:'browser-admin-password',role:'admin'});db.close();",
+      "import {openDb} from './server/db.mjs'; import {createUser} from './server/auth.mjs'; const db=openDb(process.env.UI_DB_PATH);if(!db.prepare('SELECT id FROM users WHERE username=?').get('browser-admin'))createUser(db,{username:'browser-admin',nickname:'审核管理员',password:'browser-admin-password',role:'admin'});db.close();",
     ],
     { env: process.env },
   );
@@ -52,10 +52,18 @@ test("资料库展示 Alphapedia 来源并支持搜索", async ({ page }) => {
 
 test("管理员可在推送设置中保存、测试、停用和清除机器人", async ({ page }) => {
   const secret="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=ui-secret-key";
-  let state={enabled:true,configured:true,source:"environment",masked:"key=**********t-key",canSaveWebhook:true,configurationError:false,counts:{pending:1,sending:0,sent:2,failed:0,skipped:0},lastSentAt:"2026-10-04T01:00:00.000Z",lastError:null as string|null};
+  let state={enabled:true,configured:true,source:"environment",masked:"key=**********t-key",canSaveWebhook:true,configurationError:false,categories:['boss','swarm','player','pheno'],counts:{pending:1,sending:0,sent:2,failed:0,skipped:0},lastSentAt:"2026-10-04T01:00:00.000Z",lastError:null as string|null};
+  let links:{id:number;label:string;enabled:boolean;masked:string;configurationError:boolean;categories:string[]}[]=[];
+  await page.route("**/api/v1/admin/settings/notification-links**",async route=>{
+    const method=route.request().method();
+    if(method==="POST"&&!route.request().url().endsWith('/test')){links=[{id:1,label:route.request().postDataJSON().label,enabled:true,masked:'key=**********t-key',configurationError:false,categories:route.request().postDataJSON().categories}];return route.fulfill({status:201,json:links[0]});}
+    if(method==="PATCH"){links[0]={...links[0],...route.request().postDataJSON()};return route.fulfill({json:links[0]});}
+    if(method==="DELETE"){links=[];return route.fulfill({json:{ok:true}});}
+    return route.fulfill({json:links});
+  });
   await page.route("**/api/v1/admin/settings/notifications**",async route=>{
     const method=route.request().method(),url=route.request().url();
-    if(method==="PUT"){const body=route.request().postDataJSON();state={...state,enabled:body.enabled,configured:true,source:"database",masked:"key=**********t-key"};}
+    if(method==="PUT"){const body=route.request().postDataJSON();state={...state,enabled:body.enabled,categories:body.categories,configured:true,source:"database",masked:"key=**********t-key"};}
     if(method==="DELETE")state={...state,source:"environment",configured:true};
     if(method==="POST"&&url.endsWith("/test"))return route.fulfill({json:{ok:true}});
     return route.fulfill({json:state});
@@ -63,7 +71,7 @@ test("管理员可在推送设置中保存、测试、停用和清除机器人",
   await page.route("**/api/v1/admin/monitor",route=>route.fulfill({json:{enabled:true,intervalSeconds:30,lastCheckedAt:"2026-10-04T01:01:00.000Z",lastSuccessAt:"2026-10-04T01:01:00.000Z",lastEvent:{pokemon:"Honchkrow",region:"sinnoh",location:"Route 209",observedAt:"2026-10-03T16:06:41.000Z"},consecutiveFailures:0,lastError:null}}));
   await page.goto("/");
   await page.getByRole("button",{name:"登录 / 注册",exact:true}).click();
-  await page.getByLabel("邮箱",{exact:true}).fill("browser-admin@example.com");
+  await page.getByLabel("用户名",{exact:true}).fill("browser-admin");
   await page.getByLabel("密码",{exact:true}).fill("browser-admin-password");
   await page.getByRole("button",{name:"登录",exact:true}).click();
   await page.getByRole("button",{name:"管理后台",exact:true}).click();
@@ -73,13 +81,25 @@ test("管理员可在推送设置中保存、测试、停用和清除机器人",
   await expect(page.getByText(/Honchkrow.*Route 209/)).toBeVisible();
   await expect(page.getByText("key=**********t-key",{exact:true})).toBeVisible();
   await expect(page.getByText("ui-secret-key")).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'奇遇实时监控'})).toBeVisible();
+  await page.getByLabel('主机器人群聚推送').uncheck();
   await page.getByLabel("企业微信机器人 Webhook").fill(secret);
   await page.getByRole("button",{name:"保存设置",exact:true}).click();
+  expect(state.categories).toEqual(['boss','player','pheno']);
   await page.getByRole("button",{name:"发送测试消息",exact:true}).click();
   await page.getByLabel("启用企业微信推送").uncheck();
   await page.getByRole("button",{name:"保存设置",exact:true}).click();
   await page.getByRole("button",{name:"清除网页配置",exact:true}).click();
   await expect(page.getByText("ui-secret-key")).toHaveCount(0);
+  await page.getByLabel('链接名称').fill('第二个群');
+  await page.getByLabel('新增机器人 Webhook').fill(secret);
+  await page.getByLabel('新增链接玩家报点推送').uncheck();
+  await page.getByRole('button',{name:'添加推送链接',exact:true}).click();
+  expect(links[0].categories).toEqual(['boss','swarm','pheno']);
+  await expect(page.getByText('第二个群',{exact:true})).toBeVisible();
+  await page.getByLabel('第二个群奇遇推送').uncheck();
+  await expect.poll(()=>links[0].categories).toEqual(['boss','swarm']);
+  await expect(page.getByText('ui-secret-key')).toHaveCount(0);
 });
 
 test("注册、上报和我的待审记录，登出后保持公开权限", async ({ page }) => {
@@ -88,8 +108,8 @@ test("注册、上报和我的待审记录，登出后保持公开权限", async
   await page.getByRole("button", { name: "登录 / 注册", exact: true }).click();
   await page.getByRole("button", { name: "注册账号", exact: true }).click();
   await page
-    .getByLabel("邮箱", { exact: true })
-    .fill(`player-${Date.now()}@example.com`);
+    .getByLabel("用户名", { exact: true })
+    .fill(`player-${Date.now()}`);
   await page.getByLabel("昵称", { exact: true }).fill("测试训练家");
   await page.getByLabel("密码", { exact: true }).fill("browser-test-password");
   await page.getByRole("button", { name: "创建账号", exact: true }).click();
@@ -148,12 +168,12 @@ test("管理员真实审核、编辑、结束、驳回和账号停用，公开�
 }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
-  const email = `review-player-${Date.now()}@example.com`;
+  const username = `review-player-${Date.now()}`;
   const headers = { Origin: "http://localhost:5173" };
   const registration = await request.post("/api/v1/auth/register", {
     headers,
     data: {
-      email,
+      username,
       nickname: "待审训练家",
       password: "browser-player-password",
     },
@@ -181,8 +201,8 @@ test("管理员真实审核、编辑、结束、驳回和账号停用，公开�
   await page.goto("/");
   await page.getByRole("button", { name: "登录 / 注册", exact: true }).click();
   await page
-    .getByLabel("邮箱", { exact: true })
-    .fill("browser-admin@example.com");
+    .getByLabel("用户名", { exact: true })
+    .fill("browser-admin");
   await page.getByLabel("密码", { exact: true }).fill("browser-admin-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.getByRole("button", { name: "管理后台", exact: true }).click();
@@ -236,11 +256,11 @@ test("管理员真实审核、编辑、结束、驳回和账号停用，公开�
     page.getByText("情报已标记结束。", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "账号管理", exact: true }).click();
-  await page.getByLabel("搜索账号").fill(email);
+  await page.getByLabel("搜索账号").fill(username);
   await page.getByRole("button", { name: "查找账号", exact: true }).click();
   await page
     .locator(".user-card")
-    .filter({ hasText: email })
+    .filter({ hasText: username })
     .getByRole("button", { name: "停用账号", exact: true })
     .click();
   await expect(
@@ -292,12 +312,12 @@ test("切换账号时清除私人上报，迟到响应和失败请求不显示�
   page,
   request,
 }) => {
-  const email = `private-a-${Date.now()}@example.com`;
+  const username = `private-a-${Date.now()}`;
   const headers = { Origin: "http://localhost:5173" };
   const registration = await request.post("/api/v1/auth/register", {
     headers,
     data: {
-      email,
+      username,
       nickname: "私人账号甲",
       password: "browser-private-password",
     },
@@ -317,7 +337,7 @@ test("切换账号时清除私人上报，迟到响应和失败请求不显示�
   });
   await page.goto("/");
   await page.getByRole("button", { name: "登录 / 注册", exact: true }).click();
-  await page.getByLabel("邮箱", { exact: true }).fill(email);
+  await page.getByLabel("用户名", { exact: true }).fill(username);
   await page
     .getByLabel("密码", { exact: true })
     .fill("browser-private-password");
@@ -349,8 +369,8 @@ test("切换账号时清除私人上报，迟到响应和失败请求不显示�
   await page.getByRole("button", { name: "登录 / 注册", exact: true }).click();
   await page.getByRole("button", { name: "注册账号", exact: true }).click();
   await page
-    .getByLabel("邮箱", { exact: true })
-    .fill(`private-b-${Date.now()}@example.com`);
+    .getByLabel("用户名", { exact: true })
+    .fill(`private-b-${Date.now()}`);
   await page.getByLabel("昵称", { exact: true }).fill("私人账号乙");
   await page
     .getByLabel("密码", { exact: true })
@@ -374,7 +394,7 @@ test("重复点击当前管理标签保留待审队列", async ({ page, request 
   const login = await request.post("/api/v1/auth/login", {
     headers,
     data: {
-      email: "browser-admin@example.com",
+      username: "browser-admin",
       password: "browser-admin-password",
     },
   });
@@ -394,8 +414,8 @@ test("重复点击当前管理标签保留待审队列", async ({ page, request 
   await page.goto("/");
   await page.getByRole("button", { name: "登录 / 注册", exact: true }).click();
   await page
-    .getByLabel("邮箱", { exact: true })
-    .fill("browser-admin@example.com");
+    .getByLabel("用户名", { exact: true })
+    .fill("browser-admin");
   await page.getByLabel("密码", { exact: true }).fill("browser-admin-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.getByRole("button", { name: "管理后台", exact: true }).click();
@@ -418,7 +438,7 @@ test("审核写入等待期间切换标签不会安装错误形状的旧队列",
   const login = await request.post("/api/v1/auth/login", {
     headers,
     data: {
-      email: "browser-admin@example.com",
+      username: "browser-admin",
       password: "browser-admin-password",
     },
   });
@@ -439,8 +459,8 @@ test("审核写入等待期间切换标签不会安装错误形状的旧队列",
   await page.goto("/");
   await page.getByRole("button", { name: "登录 / 注册", exact: true }).click();
   await page
-    .getByLabel("邮箱", { exact: true })
-    .fill("browser-admin@example.com");
+    .getByLabel("用户名", { exact: true })
+    .fill("browser-admin");
   await page.getByLabel("密码", { exact: true }).fill("browser-admin-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.getByRole("button", { name: "管理后台", exact: true }).click();
@@ -494,4 +514,36 @@ test("审核写入等待期间切换标签不会安装错误形状的旧队列",
     page.getByRole("heading", { name: "写入回归宝可梦", exact: true }),
   ).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('玩家可上报合众奇遇并选择四种形式',async({page})=>{
+  await page.route('**/api/v1/pheno-locations',route=>route.fulfill({json:{enabled:true,lastSyncedAt:'2026-10-06T05:00:00Z',lastError:'',items:[
+    {area:'Abundant Shrine',areaZh:'丰饶之祠',type:'water',detail:'(Bottom Center)',detailZh:'（下方中间）',mapUrl:'https://i.imgur.com/example.png'},
+    {area:'Abundant Shrine',areaZh:'丰饶之祠',type:'water',detail:'(Top Center)',detailZh:'（上方中间）',mapUrl:null},
+    {area:'Chargestone Cave',areaZh:'电气石洞穴',type:'dust',detail:'B1F (Top)',detailZh:'地下1层（上方）',mapUrl:null},
+  ]}}));
+  await page.goto('/');
+  await page.getByRole('button',{name:'登录 / 注册',exact:true}).click();
+  await page.getByRole('button',{name:'注册账号',exact:true}).click();
+  await page.getByLabel('用户名',{exact:true}).fill(`pheno-${Date.now()}`);
+  await page.getByLabel('昵称',{exact:true}).fill('奇遇训练家');
+  await page.getByLabel('密码',{exact:true}).fill('browser-test-password');
+  await page.getByRole('button',{name:'创建账号',exact:true}).click();
+  await page.getByRole('button',{name:'玩家上报',exact:true}).click();
+  await page.getByLabel('情报类型').selectOption('pheno');
+  await expect(page.getByLabel('地区')).toHaveValue('unova');
+  await expect(page.getByLabel('地区').locator('option')).toHaveCount(1);
+  await expect(page.getByLabel('奇遇形式').locator('option')).toHaveCount(5);
+  await page.getByLabel('奇遇形式').selectOption('water');
+  await expect(page.locator('#pheno-location-options option')).toHaveCount(1);
+  await page.getByLabel('奇遇区域').selectOption('丰饶之祠');
+  await expect(page.getByLabel('地点',{exact:true})).toHaveValue('丰饶之祠');
+  await page.getByLabel('具体点位').selectOption('(Top Center)');
+  await page.getByRole('button',{name:'提交上报',exact:true}).click();
+  await expect(page.getByText('上报已提交，等待管理员审核。',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'我的上报',exact:true}).click();
+  const report=page.locator('.report-card').filter({hasText:'丰饶之祠 · （上方中间）'});
+  await expect(report).toContainText('奇遇');
+  await expect(report).toContainText('水面波纹奇遇');
+  await expect(report).toContainText('未知宝可梦');
 });

@@ -1,0 +1,46 @@
+name: Publish frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: vars.POKE_API_ORIGIN != ''
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - uses: actions/configure-pages@v5
+      - name: Build frontend
+        env:
+          POKE_API_ORIGIN: ${{ vars.POKE_API_ORIGIN }}
+          PAGES_BASE_PATH: ${{ vars.PAGES_BASE_PATH }}
+          VITE_ICP_NUMBER: ${{ vars.VITE_ICP_NUMBER }}
+        run: |
+          node -e "const u=new URL(process.env.POKE_API_ORIGIN);if(u.protocol!=='https:'||u.origin!==process.env.POKE_API_ORIGIN)process.exit(1)"
+          echo "VITE_API_BASE_URL=$POKE_API_ORIGIN" >> "$GITHUB_ENV"
+          echo "VITE_BASE_PATH=${PAGES_BASE_PATH:-/${GITHUB_REPOSITORY#*/}/}" >> "$GITHUB_ENV"
+          npm ci
+          npm run build
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

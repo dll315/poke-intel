@@ -110,7 +110,7 @@ export function EventCard({ item }: { item: Event }) {
       <div className="place">
         <MapPin size={16} />
         <span>
-          {regions[item.region]} · {item.location}
+          {regions[item.region]} · {item.locationZh||item.location}
         </span>
       </div>
       {item.note && <p className="note">{item.note}</p>}
@@ -125,7 +125,7 @@ export function EventCard({ item }: { item: Event }) {
           最后确认<strong>{time(item.lastConfirmedAt)}</strong>
         </span>
         <span>
-          展示截止<strong>{time(item.expiresAt)}</strong>
+          {item.source==='external'?'预计结束':'展示截止'}<strong>{time(item.expiresAt)}</strong>
         </span>
       </div>
       <div className="card-bottom">
@@ -175,7 +175,7 @@ export function ReportCard({
         <div className="place">
           <MapPin size={15} />
           <span>
-            {regions[item.region]} · <span>{item.location}</span>
+            {regions[item.region]} · <span>{item.locationZh||item.location}</span>
           </span>
         </div>
         {item.note && <p className="note">{item.note}</p>}

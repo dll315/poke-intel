@@ -472,6 +472,7 @@ export default function App() {
                         ["", "全部情报"],
                         ["boss", "头目"],
                         ["swarm", "群聚"],
+                        ["pheno", "奇遇"],
                       ].map(([id, label]) => (
                         <button
                           type="button"

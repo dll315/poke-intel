@@ -5,16 +5,28 @@ import {listReports,reportView} from './reports.mjs';
 import {listEvents,eventView,expireEvents} from './events.mjs';
 import {safeUser} from './auth.mjs';
 import {validateWecomWebhook} from './notifications.mjs';
+import {notificationCategories} from './notification-categories.mjs';
 
-const notificationSettingsInput=z.object({enabled:z.boolean(),webhookUrl:z.string().max(1000).refine(value=>{try{validateWecomWebhook(value);return true;}catch{return false;}},'企业微信 Webhook 地址无效').optional()}).strict();
+const categorySelection=z.array(z.enum(notificationCategories)).max(notificationCategories.length);
+const notificationSettingsInput=z.object({enabled:z.boolean(),categories:categorySelection.optional(),webhookUrl:z.string().max(1000).refine(value=>{try{validateWecomWebhook(value);return true;}catch{return false;}},'企业微信 Webhook 地址无效').optional()}).strict();
+const linkWebhook=z.string().max(1000).refine(value=>{try{return Boolean(validateWecomWebhook(value));}catch{return false;}},'企业微信 Webhook 地址无效');
+const linkInput=z.object({label:z.string().trim().min(1).max(30),webhookUrl:linkWebhook,enabled:z.boolean().default(true),categories:categorySelection.optional()}).strict();
+const linkPatch=z.object({label:z.string().trim().min(1).max(30).optional(),webhookUrl:linkWebhook.optional(),enabled:z.boolean().optional(),categories:categorySelection.optional()}).strict().refine(value=>Object.keys(value).length>0,'至少填写一个修改项');
 
-export function registerAdmin(app,{db,now,notifications,settings,alphaMonitor}) {
+export function registerAdmin(app,{db,now,notifications,settings,alphaMonitor,swarmMonitor,phenoMonitor}) {
   app.get('/api/v1/admin/notifications',async()=>notifications.status());
   app.get('/api/v1/admin/settings/notifications',async()=>({...settings.getNotificationStatus(),...notifications.status()}));
   app.put('/api/v1/admin/settings/notifications',async request=>settings.saveNotificationConfig(parse(notificationSettingsInput,request.body),request.user.id));
   app.delete('/api/v1/admin/settings/notifications/webhook',async request=>settings.clearNotificationWebhook(request.user.id));
-  app.post('/api/v1/admin/settings/notifications/test',async()=>notifications.sendTest());
+  app.post('/api/v1/admin/settings/notifications/test',async()=>notifications.sendTest('primary'));
+  app.get('/api/v1/admin/settings/notification-links',async()=>settings.listNotificationLinks());
+  app.post('/api/v1/admin/settings/notification-links',async(request,reply)=>{const result=settings.addNotificationLink(parse(linkInput,request.body),request.user.id);reply.code(201);return result;});
+  app.patch('/api/v1/admin/settings/notification-links/:id',async request=>settings.updateNotificationLink(positiveId(request.params.id),parse(linkPatch,request.body),request.user.id));
+  app.delete('/api/v1/admin/settings/notification-links/:id',async request=>settings.deleteNotificationLink(positiveId(request.params.id),request.user.id));
+  app.post('/api/v1/admin/settings/notification-links/:id/test',async request=>notifications.sendTest(`link:${positiveId(request.params.id)}`));
   app.get('/api/v1/admin/monitor',async()=>alphaMonitor.status());
+  app.get('/api/v1/admin/monitor/swarm',async()=>swarmMonitor.status());
+  app.get('/api/v1/admin/monitor/pheno',async()=>phenoMonitor.status());
   app.get('/api/v1/admin/reports',async request=>listReports(db,request.query,undefined,true));
   app.get('/api/v1/admin/events',async request=>{expireEvents(db,new Date(now()).toISOString());return listEvents(db,request.query,true);});
   app.post('/api/v1/admin/reports/:id/review',async request=>{
@@ -29,7 +41,7 @@ export function registerAdmin(app,{db,now,notifications,settings,alphaMonitor}) 
       }
       let eventId=null;
       if(input.action==='approve'){
-        const expiresAt=input.expiresAt||report.suggested_expires_at||new Date(Date.parse(report.observed_at)+3600000).toISOString();
+        const expiresAt=input.expiresAt||report.suggested_expires_at||new Date(Date.parse(report.observed_at)+(report.kind==='pheno'?20:60)*60000).toISOString();
         if(expiresAt<=report.observed_at)throw new ApiError(422,'截止时间必须晚于观察时间',{expiresAt:'截止时间必须晚于观察时间'});
         const low=new Date(Date.parse(report.observed_at)-15*60000).toISOString();const high=new Date(Date.parse(report.observed_at)+15*60000).toISOString();
         const existing=db.prepare("SELECT * FROM events WHERE kind=? AND pokemon=? AND region=? AND location=? AND status='active' AND observed_at>=? AND observed_at<=? ORDER BY observed_at DESC,id DESC LIMIT 1")
@@ -68,7 +80,7 @@ export function registerAdmin(app,{db,now,notifications,settings,alphaMonitor}) 
   });
   app.get('/api/v1/admin/users',async request=>{
     const {page,pageSize}=pagination(request.query);const q=parse(z.string().max(200).optional(),request.query.q);const params=q?[like(q),like(q)]:[];
-    const where=q?" WHERE email LIKE ? ESCAPE '\\' OR nickname LIKE ? ESCAPE '\\'":'';
+    const where=q?" WHERE username LIKE ? ESCAPE '\\' OR nickname LIKE ? ESCAPE '\\'":'';
     const total=db.prepare('SELECT count(*) AS n FROM users'+where).get(...params).n;
     const items=db.prepare('SELECT * FROM users'+where+' ORDER BY id DESC LIMIT ? OFFSET ?').all(...params,pageSize,(page-1)*pageSize).map(safeUser);
     return {items,total,page,pageSize};

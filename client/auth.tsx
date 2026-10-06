@@ -137,16 +137,17 @@ export function AuthDialog({
               {error}
             </div>
           )}
-          <Field label="邮箱" name="email" error={fields.email}>
+          <Field label="用户名" name="username" error={fields.username}>
             <input
-              id="email"
-              name="email"
-              type="email"
+              id="username"
+              name="username"
+              type="text"
               ref={first}
-              autoComplete="email"
+              autoComplete="username"
               required
-              maxLength={254}
-              placeholder="你的邮箱地址"
+              minLength={3}
+              maxLength={30}
+              placeholder="英文字母、数字、下划线或短横线"
             />
           </Field>
           {mode === "register" && (
@@ -154,7 +155,7 @@ export function AuthDialog({
               label="昵称"
               name="nickname"
               error={fields.nickname}
-              hint="公开情报只展示昵称，不展示邮箱。"
+              hint="公开情报只展示昵称。"
             >
               <input
                 id="nickname"
@@ -177,7 +178,7 @@ export function AuthDialog({
               name="password"
               type="password"
               required
-              minLength={10}
+              minLength={mode === "register" ? 10 : 1}
               maxLength={128}
               autoComplete={
                 mode === "login" ? "current-password" : "new-password"
@@ -191,7 +192,7 @@ export function AuthDialog({
           </button>
         </form>
         <small className="auth-note">
-          邮箱仅作为登录标识，尚未提供邮件验证与自动密码找回。
+          请记住用户名和密码；目前没有自动找回密码功能。
         </small>
       </div>
     </div>

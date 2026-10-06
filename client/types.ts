@@ -1,8 +1,8 @@
-export type Kind = "boss" | "swarm";
+export type Kind = "boss" | "swarm" | "pheno";
 export type Region = "kanto" | "johto" | "hoenn" | "sinnoh" | "unova";
 export type User = {
   id: number;
-  email: string;
+  username: string;
   nickname: string;
   role: "user" | "admin";
   disabled: boolean;
@@ -21,6 +21,7 @@ export type Event = {
   pokemonOriginal?: string;
   region: Region;
   location: string;
+  locationZh?: string;
   observedAt: string;
   expiresAt: string;
   lastConfirmedAt: string;
@@ -37,6 +38,7 @@ export type Report = {
   pokemon: string;
   region: Region;
   location: string;
+  locationZh?: string;
   observedAt: string;
   note: string;
   status: "pending" | "approved" | "rejected";
@@ -48,8 +50,8 @@ export type Report = {
   reporter: { nickname: string };
 };
 export type CatalogEntry = {
-  id:number;kind:Kind;pokemon:string;pokemonOriginal:string;region:Region;location:string;locationNote:string;
-  tier:number|null;nationalDex:number|null;hms:string[];valuable:boolean;source:string;sourceUrl:string;syncedAt:string;
+  id:number;kind:Exclude<Kind,"pheno">;pokemon:string;pokemonOriginal:string;region:Region;location:string;locationZh?:string;locationNote:string;
+  tier:number|null;nationalDex:number|null;hms:string[];moveset:string[];movesetOriginal:string[];valuable:boolean;source:string;sourceUrl:string;syncedAt:string;
 };
 export const regions: Record<Region, string> = {
   kanto: "关都",
@@ -58,7 +60,7 @@ export const regions: Record<Region, string> = {
   sinnoh: "神奥",
   unova: "合众",
 };
-export const kinds: Record<Kind, string> = { boss: "头目", swarm: "群聚" };
+export const kinds: Record<Kind, string> = { boss: "头目", swarm: "群聚", pheno: "奇遇" };
 export const statuses: Record<Event["status"], string> = {
   active: "有效情报",
   ended: "已结束",

@@ -12,6 +12,7 @@ import {registerReports} from './reports.mjs';
 import {registerAdmin} from './admin.mjs';
 import {ApiError} from './validation.mjs';
 import {validateWecomWebhook,createNotifications} from './notifications.mjs';
+import {createPhenoLocations} from './pheno-locations.mjs';
 import {createCatalog} from './catalog.mjs';
 import {createSettings} from './settings.mjs';
 import {createAlphaMonitor} from './alpha-monitor.mjs';
@@ -25,7 +26,7 @@ function trustImmediatePrivateProxy(address,hop) {
   return version>0&&proxyPeers.check(normalized,version===4?'ipv4':'ipv6');
 }
 
-export async function buildApp({dbPath='data/poke.db',origin='http://localhost:3001',allowedOrigins=[origin],now=Date.now,trustProxy=false,wecomWebhookUrl='',settingsEncryptionKey='',notificationFetch=globalThis.fetch,notificationsAutoStart=true,catalog={},alphaMonitor={}}={}) {
+export async function buildApp({dbPath='data/poke.db',origin='http://localhost:3001',allowedOrigins=[origin],now=Date.now,trustProxy=false,wecomWebhookUrl='',settingsEncryptionKey='',notificationFetch=globalThis.fetch,notificationsAutoStart=true,catalog={},alphaMonitor={},swarmMonitor={},phenoMonitor={}}={}) {
   const webhookUrl=validateWecomWebhook(wecomWebhookUrl);
   const expectedOrigin=new URL(origin).origin;
   if(expectedOrigin!==origin)throw new Error('ORIGIN must contain only scheme, host and optional port');
@@ -47,6 +48,15 @@ export async function buildApp({dbPath='data/poke.db',origin='http://localhost:3
     reply.header('Content-Security-Policy',"default-src 'self'; "+scriptPolicy+"; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
     if(new URL(origin).protocol==='https:')reply.header('Strict-Transport-Security','max-age=31536000');
     if(request.url.startsWith('/api/'))reply.header('Cache-Control','no-store');
+    if(request.url.startsWith('/api/')&&acceptedOrigins.has(request.headers.origin)){
+      reply.header('Vary','Origin').header('Access-Control-Allow-Origin',request.headers.origin).header('Access-Control-Allow-Credentials','true');
+    }
+  });
+  app.options('/api/v1/*',(request,reply)=>{
+    if(!acceptedOrigins.has(request.headers.origin))throw new ApiError(403,'请求来源校验失败');
+    reply.header('Access-Control-Allow-Methods','GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    reply.header('Access-Control-Allow-Headers','Content-Type, X-CSRF-Token');
+    return reply.code(204).send();
   });
   app.addHook('preHandler',(request,reply,done)=>{
     try {
@@ -81,11 +91,15 @@ export async function buildApp({dbPath='data/poke.db',origin='http://localhost:3
   const notifications=createNotifications({db,now,origin,settings,fetchImpl:notificationFetch});
   app.decorate('notifications',notifications);
   const externalCatalog=createCatalog({db,now,...catalog});app.decorate('catalog',externalCatalog);
-  if(alphaMonitor.enabled&&!externalCatalog.enabled)throw new Error('头目实时监控要求启用并确认 Alphapedia 数据来源');
+  const phenoLocations=createPhenoLocations({db,now,enabled:catalog.enabled,permissionConfirmed:catalog.permissionConfirmed,baseUrl:catalog.baseUrl,fetchImpl:catalog.fetchImpl});app.decorate('phenoLocations',phenoLocations);
+  if((alphaMonitor.enabled||swarmMonitor.enabled||phenoMonitor.enabled)&&!externalCatalog.enabled)throw new Error('实时监控要求启用并确认 Alphapedia 数据来源');
   const monitor=createAlphaMonitor({db,now,notifications,...alphaMonitor,autoStart:false});app.decorate('alphaMonitor',monitor);
+  const swarm=createAlphaMonitor({db,now,notifications,...swarmMonitor,kind:'swarm',autoStart:false});app.decorate('swarmMonitor',swarm);
+  const pheno=createAlphaMonitor({db,now,notifications,...phenoMonitor,kind:'pheno',autoStart:false});app.decorate('phenoMonitor',pheno);
   app.get('/api/v1/catalog',request=>externalCatalog.list(request.query));
   app.get('/api/v1/catalog/status',()=>externalCatalog.status());
-  const context={db,now,origin,limit,notifications,settings,catalog:externalCatalog,alphaMonitor:monitor};registerAuth(app,context);registerEvents(app,context);registerReports(app,context);registerAdmin(app,context);
+  app.get('/api/v1/pheno-locations',()=>phenoLocations.list());
+  const context={db,now,origin,limit,notifications,settings,catalog:externalCatalog,alphaMonitor:monitor,swarmMonitor:swarm,phenoMonitor:pheno};registerAuth(app,context);registerEvents(app,context);registerReports(app,context);registerAdmin(app,context);
   const dist=fileURLToPath(new URL('../dist/',import.meta.url));
   const hasClient=existsSync(dist+'index.html');
   if(hasClient)await app.register(staticFiles,{root:dist,prefix:'/',index:['index.html'],list:false});
@@ -97,6 +111,6 @@ export async function buildApp({dbPath='data/poke.db',origin='http://localhost:3
     const at=new Date(now()).toISOString();expireEvents(db,at);db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(at);
     for(const [key,bucket] of limits)if(bucket.end<=now())limits.delete(key);
   },60000);maintenance.unref();
-  app.addHook('onClose',async()=>{clearInterval(maintenance);externalCatalog.close();await monitor.close();await notifications.close();db.close();});
-  await app.ready();if(notificationsAutoStart)notifications.start();if(catalog.autoStart!==false)externalCatalog.start();if(alphaMonitor.autoStart!==false)monitor.start();return app;
+  app.addHook('onClose',async()=>{clearInterval(maintenance);externalCatalog.close();phenoLocations.close();await monitor.close();await swarm.close();await pheno.close();await notifications.close();db.close();});
+  await app.ready();if(notificationsAutoStart)notifications.start();if(catalog.autoStart!==false){externalCatalog.start();phenoLocations.start();}if(alphaMonitor.autoStart!==false)monitor.start();if(swarmMonitor.autoStart!==false)swarm.start();if(phenoMonitor.autoStart!==false)pheno.start();return app;
 }

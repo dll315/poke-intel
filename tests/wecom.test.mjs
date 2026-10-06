@@ -11,19 +11,19 @@ const webhook='https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-only-bo
 async function fixture(t,{transport=async()=>Response.json({errcode:0}),enabled=true,autoStart=false}={}){
   const dir=mkdtempSync(join(tmpdir(),'poke-wecom-'));const dbPath=join(dir,'poke.db');
   let clock=Date.parse('2026-10-03T04:00:00Z');
-  const options={dbPath,origin,now:()=>clock,wecomWebhookUrl:enabled?webhook:'',notificationFetch:transport,notificationsAutoStart:autoStart};
+  const options={dbPath,origin,now:()=>clock,wecomWebhookUrl:enabled?webhook:'',settingsEncryptionKey:'11'.repeat(32),notificationFetch:transport,notificationsAutoStart:autoStart};
   let app=await buildApp(options);
   t.after(async()=>{await app.close();rmSync(dir,{recursive:true,force:true});});
   assert.equal(app.notifications?.enabled,enabled);
-  async function session(email,role){
-    createUser(app.db,{email,nickname:role==='admin'?'管理员':'玩家',password:'test-password-12345',role});
-    const res=await app.inject({method:'POST',url:'/api/v1/auth/login',headers:{origin},payload:{email,password:'test-password-12345'}});
+  async function session(username,role){
+    createUser(app.db,{username,nickname:role==='admin'?'管理员':'玩家',password:'test-password-12345',role});
+    const res=await app.inject({method:'POST',url:'/api/v1/auth/login',headers:{origin},payload:{username,password:'test-password-12345'}});
     assert.equal(res.statusCode,200);return{cookie:res.headers['set-cookie'].split(';')[0],'x-csrf-token':res.json().csrfToken,origin};
   }
-  const player=await session('player@example.test','user');const admin=await session('admin@example.test','admin');
+  const player=await session('player','user');const admin=await session('admin','admin');
   const call=(method,path,payload,headers=admin)=>app.inject({method,url:'/api/v1'+path,payload,headers});
   async function report({location='常青森林',kind='boss',pokemon='皮卡丘',minutes=0}={}){
-    const r=await call('POST','/reports',{kind,pokemon,region:'kanto',location,observedAt:new Date(clock-minutes*60000).toISOString()},player);
+    const r=await call('POST','/reports',{kind,pokemon,region:kind==='pheno'?'unova':'kanto',...(kind==='pheno'?{phenomenonType:'grass'}:{}),location,observedAt:new Date(clock-minutes*60000).toISOString()},player);
     assert.equal(r.statusCode,201,r.body);return r.json();
   }
   const approve=id=>call('POST',`/admin/reports/${id}/review`,{action:'approve'});
@@ -64,6 +64,80 @@ test('worker translates a known English Pokemon name before sending',async t=>{
   f.app.db.prepare('INSERT INTO pokemon_names(english_name,chinese_name,synced_at) VALUES(?,?,?)').run('Pikachu','皮卡丘','2026-10-04T01:00:00.000Z');
   await f.approve((await f.report({pokemon:'Pikachu'})).id);await f.app.notifications.runOnce();
   assert.match(content,/宝可梦：\*\* 皮卡丘/);assert.doesNotMatch(content,/宝可梦：\*\* Pikachu/);
+});
+
+test('two robot links receive one event independently without resending to a successful link',async t=>{
+  const extra='https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=second-test-bot-key';
+  const sent=[];let failExtra=true;
+  const f=await fixture(t,{transport:async url=>{sent.push(String(url));if(String(url)===extra&&failExtra){failExtra=false;throw new Error('temporary failure');}return Response.json({errcode:0});}});
+  const adminId=f.app.db.prepare("SELECT id FROM users WHERE role='admin'").get().id;
+  f.app.settings.addNotificationLink({label:'第二个群',webhookUrl:extra,enabled:true},adminId);
+  await f.approve((await f.report()).id);
+  await f.app.notifications.runOnce();f.advance(3500);await f.app.notifications.runOnce();
+  assert.equal(f.app.db.prepare('SELECT state FROM notification_outbox').get().state,'pending');
+  f.advance(61000);await f.app.notifications.runOnce();
+  assert.deepEqual(sent,[webhook,extra,extra]);
+  assert.equal(f.app.db.prepare('SELECT state FROM notification_outbox').get().state,'sent');
+});
+
+test('each robot link filters boss, swarm, player reports and pheno independently',async t=>{
+  const extra='https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=filtered-bot-key';
+  const sent=[];const f=await fixture(t,{transport:async url=>{sent.push(String(url));return Response.json({errcode:0});}});
+  const adminId=f.app.db.prepare("SELECT id FROM users WHERE role='admin'").get().id;
+  f.app.settings.saveNotificationConfig({enabled:true,categories:['boss','pheno']},adminId);
+  const link=f.app.settings.addNotificationLink({label:'报点群',webhookUrl:extra,enabled:true,categories:['player','swarm']},adminId);
+  assert.deepEqual(link.categories,['swarm','player']);
+  async function queue(kind,source){
+    const at='2026-10-03T04:00:00.000Z';const row=f.app.db.prepare("INSERT INTO events(kind,pokemon,region,location,observed_at,expires_at,last_confirmed_at,status,source,source_url,note) VALUES(?,?,?,?,?,?,?,'active',?,NULL,'')").run(kind,'Pikachu','unova',kind+source+sent.length,at,'2026-10-03T05:00:00.000Z',at,source);
+    f.app.notifications.enqueueEvent(Number(row.lastInsertRowid));
+    return f.app.db.prepare('SELECT destination_id FROM notification_deliveries WHERE event_id=?').all(Number(row.lastInsertRowid)).map(x=>x.destination_id);
+  }
+  assert.deepEqual(await queue('boss','external'),['primary']);
+  assert.deepEqual(await queue('swarm','external'),[`link:${link.id}`]);
+  assert.deepEqual(await queue('boss','player'),[`link:${link.id}`]);
+  const playerPheno=await f.report({kind:'pheno',location:'奇遇地点'});await f.approve(playerPheno.id);
+  assert.deepEqual(f.app.db.prepare('SELECT destination_id FROM notification_deliveries WHERE event_id=(SELECT event_id FROM reports WHERE id=?)').all(playerPheno.id).map(x=>x.destination_id),[`link:${link.id}`]);
+  assert.deepEqual(await queue('pheno','external'),['primary']);
+  f.app.settings.updateNotificationLink(link.id,{categories:['pheno']},adminId);
+  assert.deepEqual(await queue('pheno','external'),[`link:${link.id}`,'primary']);
+  assert.equal((await f.call('GET','/admin/settings/notifications')).json().categories.includes('swarm'),false);
+});
+
+test('pending jobs from the previous single-link queue remain deliverable after upgrade',async t=>{
+  let sends=0;const f=await fixture(t,{transport:async()=>{sends++;return Response.json({errcode:0});}});
+  await f.approve((await f.report()).id);
+  f.app.db.exec('DELETE FROM notification_deliveries');
+  await f.app.notifications.runOnce();
+  assert.equal(sends,1);assert.equal(f.app.db.prepare('SELECT state FROM notification_outbox').get().state,'sent');
+});
+
+test('external monitor notification identifies Alphapedia as its source',async t=>{
+  let content='';const f=await fixture(t,{transport:async(url,options)=>{content=JSON.parse(options.body).markdown.content;return Response.json({errcode:0});}});
+  const observedAt='2026-10-03T04:00:00.000Z',expiresAt='2026-10-03T05:15:00.000Z';
+  const result=f.app.db.prepare("INSERT INTO events(kind,pokemon,region,location,observed_at,expires_at,last_confirmed_at,status,source,source_url) VALUES('boss','Ditto','unova','Route 9',?,?,?,'active','external','https://alpha.pokemmotools.org/alpha-list')").run(observedAt,expiresAt,observedAt);
+  f.app.notifications.enqueueEvent(Number(result.lastInsertRowid));await f.app.notifications.runOnce();
+  assert.match(content,/Alphapedia 自动监控/);
+  assert.doesNotMatch(content,/玩家上报/);
+});
+
+test('external boss push uses Chinese location and confirmed route details without inventing a moveset',async t=>{
+  let content='';const f=await fixture(t,{transport:async(url,options)=>{content=JSON.parse(options.body).markdown.content;return Response.json({errcode:0});}});
+  const at='2026-10-03T04:00:00.000Z';
+  f.app.db.prepare("INSERT INTO external_catalog(kind,pokemon,region,location,location_note,hms,moveset,source,source_url,source_key,synced_at) VALUES('boss','Ditto','unova','Route 9','near grass','[\"Cut\"]','[\"Transform\",\"Struggle\"]','Alphapedia','https://alpha.pokemmotools.org/alpha-list','boss-ditto',?)").run(at);
+  f.app.db.prepare('INSERT INTO move_names(english_name,chinese_name,synced_at) VALUES(?,?,?)').run('Transform','变身',at);
+  const result=f.app.db.prepare("INSERT INTO events(kind,pokemon,region,location,observed_at,expires_at,last_confirmed_at,status,source,source_url) VALUES('boss','Ditto','unova','Route 9',?,?,?,'active','external','https://alpha.pokemmotools.org/alpha-list')").run(at,'2026-10-03T05:15:00.000Z',at);
+  f.app.notifications.enqueueEvent(Number(result.lastInsertRowid));await f.app.notifications.runOnce();
+  assert.match(content,/地点：\*\* 9号道路/);assert.match(content,/地点说明（来源原文）：\*\* near grass/);
+  assert.match(content,/所需秘传：\*\* 居合劈/);assert.match(content,/来源资料配招：\*\* 变身、Struggle/);
+  assert.match(content,/当次头目招式仍需游戏内核实/);
+});
+
+test('external phenomenon push translates the precise point and labels unverified end time',async t=>{
+  let content='';const f=await fixture(t,{transport:async(url,options)=>{content=JSON.parse(options.body).markdown.content;return Response.json({errcode:0});}});
+  const at='2026-10-03T04:00:00.000Z';
+  const result=f.app.db.prepare("INSERT INTO events(kind,pokemon,region,location,observed_at,expires_at,last_confirmed_at,status,source,source_url,note) VALUES('pheno','Audino','unova','Abundant Shrine · (Bottom Center)',?,?,?,'active','external','https://alpha.pokemmotools.org/pheno-list','水面奇遇')").run(at,'2026-10-03T04:10:00.000Z',at);
+  f.app.notifications.enqueueEvent(Number(result.lastInsertRowid));await f.app.notifications.runOnce();
+  assert.match(content,/丰饶之祠 · （下方中间）/);assert.match(content,/预计结束/);assert.doesNotMatch(content,/展示截止/);
 });
 
 test('transport failure does not fail approval; retry survives reopening and sanitizes errors',async t=>{
