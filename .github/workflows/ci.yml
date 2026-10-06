@@ -17,3 +17,9 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run test:production
+      - name: Validate Compose configuration
+        env:
+          ORIGIN: https://intel.example.com
+        run: docker compose config --quiet
+      - name: Build production container
+        run: docker build -t poke-intel:ci .

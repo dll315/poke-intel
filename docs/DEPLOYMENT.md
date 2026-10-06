@@ -102,7 +102,7 @@ Pages 只发布 `dist/` 中的静态文件。它不能运行 Node、SQLite、Alp
 
 1. 在仓库 **Settings → Pages → Build and deployment** 中选择 **GitHub Actions**。GitHub Free 的 Pages 适用于公开仓库；私有仓库需确认账户套餐支持。工作流文件为 [pages.yml](../.github/workflows/pages.yml)。
 2. 在 **Settings → Secrets and variables → Actions → Variables** 新建仓库变量 `POKE_API_ORIGIN`，值为后台 HTTPS 来源，例如 `https://api.example.com`。不要填路径或末尾斜杠。缺少此变量时 Pages 部署任务会跳过，避免发布不能工作的页面。
-3. 默认 Pages 地址 `https://<用户名>.github.io/<仓库名>/` 时，无需设置 `PAGES_BASE_PATH`，工作流会自动使用 `/<仓库名>/`。如果使用自定义域名，设置 `PAGES_BASE_PATH=/`，并在 **Settings → Pages → Custom domain** 填 `app.example.com`；按 GitHub 指引把该子域名的 CNAME 指向 `<用户名>.github.io`，然后启用 HTTPS。
+3. 项目 Pages 地址通常是 `https://<用户名>.github.io/<仓库名>/`；若账号的用户站点已有自定义域名，也可能显示为 `https://<已有域名>/<仓库名>/`。这两种带仓库路径的地址无需设置 `PAGES_BASE_PATH`，工作流会自动使用 `/<仓库名>/`。如果给**本仓库**设置独立自定义域名，才设置 `PAGES_BASE_PATH=/`，并在 **Settings → Pages → Custom domain** 填 `app.example.com`；按 GitHub 指引把该子域名的 CNAME 指向 `<用户名>.github.io`，然后启用 HTTPS。
 4. 在服务器 `.env` 设置 `ORIGIN=https://api.example.com`，`ALLOWED_ORIGINS=https://api.example.com,https://app.example.com`；如果还想让默认 Pages 地址只读访问，也加入 `https://<用户名>.github.io`。重新创建容器使配置生效。`ALLOWED_ORIGINS` 只填写来源，不带仓库路径。
 5. 推送到 `main` 后，或在 **Actions → Publish frontend to GitHub Pages → Run workflow** 手动运行。工作流会构建前端并发布。`VITE_ICP_NUMBER` 可作为仓库变量填写实际备案号；它会公开出现在网页中。**不要**把企业微信 Webhook、数据库或加密密钥填入仓库变量或 `VITE_` 变量。
 
