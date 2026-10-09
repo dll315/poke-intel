@@ -12,7 +12,7 @@
 git -C /opt/poke-intel pull --ff-only && bash /opt/poke-intel/deploy/quickstart.sh 你的公网IP
 ```
 
-脚本自动创建或修正 `.env` 的 `ORIGIN`、`ALLOWED_ORIGINS`，只在密钥缺失时生成新密钥；保留 `poke-intel-data` 数据卷和其他已有设置。它优先拉取 `ghcr.io/dll315/poke-intel:latest`，下载失败时使用本机已有的 `poke-intel:local` 镜像；两者都不可用时不删除旧容器。镜像由 GitHub Actions 构建；首次发布后若包仍显示 Private，仓库所有者须到包设置改为 Public，匿名服务器才可直接拉取。[GitHub 官方说明](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)指出容器包初次发布默认可能为 Private。
+全新服务器已安装 Docker 时，先用 `git clone https://github.com/dll315/poke-intel.git /opt/poke-intel` 获取源码，再运行同一条脚本命令。脚本自动创建或修正 `.env` 的 `ORIGIN`、`ALLOWED_ORIGINS`，只在密钥缺失时生成新密钥；保留 `poke-intel-data` 数据卷和其他已有设置。它优先拉取[已公开的预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，下载失败时使用本机已有的 `poke-intel:local` 镜像；两者都不可用时不删除旧容器。
 
 脚本只将 3001 绑定到服务器本机，并通过健康接口确认后台已启动。**这不等于公网网页已经可用**：账号登录需要真正的 HTTPS，请继续按下文配置证书与反向代理；OpenCloudOS 的系统安装步骤不能照搬 Ubuntu 命令。首次启动后执行 `docker exec -it poke-intel node scripts/admin.mjs admin 管理员` 创建管理员。
 

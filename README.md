@@ -14,7 +14,7 @@
 git -C /opt/poke-intel pull --ff-only && bash /opt/poke-intel/deploy/quickstart.sh 你的公网IP
 ```
 
-脚本会修正 `.env` 中的 HTTPS `ORIGIN`、补齐加密密钥并保留原有数据库卷；优先拉取 GitHub 预构建镜像，下载失败时使用本机已有的 `poke-intel:local` 镜像。若新发布的镜像包仍是 Private，仓库所有者需在 GitHub 包设置中将 `poke-intel` 改为 Public，才能免登录拉取。脚本确认的是**本机后台**启动；公网网页仍需按[HTTPS 步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)配置证书和反向代理，安全组开放 80/443。
+全新服务器已安装 Docker 时，可用 `git clone https://github.com/dll315/poke-intel.git /opt/poke-intel && bash /opt/poke-intel/deploy/quickstart.sh 你的公网IP`。脚本会修正 `.env` 中的 HTTPS `ORIGIN`、补齐加密密钥并保留原有数据库卷；优先拉取[公开的 GitHub 预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，下载失败时使用本机已有的 `poke-intel:local` 镜像。脚本确认的是**本机后台**启动；公网网页仍需按[HTTPS 步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)配置证书和反向代理，安全组开放 80/443。
 
 ## Linux 用 `docker run` 部署（无域名）
 
