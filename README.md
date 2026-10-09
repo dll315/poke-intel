@@ -27,6 +27,11 @@ openssl rand -hex 32
 cd /opt/poke-intel
 ls -l Dockerfile package-lock.json .env
 docker build -t poke-intel:local .
+```
+
+**必须等构建成功后再运行下一段。** 如果出现 `EOF` 或其他构建错误，镜像尚未生成；先看[构建中断排查](docs/DEPLOYMENT.md#构建中断或-eof)，不要继续执行 `docker run`。
+
+```bash
 docker volume create poke-intel-data
 sudo install -d -o 1000 -g 1000 -m 700 /opt/poke-intel/backups
 docker run -d --name poke-intel --restart unless-stopped \
@@ -37,7 +42,17 @@ docker run -d --name poke-intel --restart unless-stopped \
   -v poke-intel-data:/app/data \
   -v /opt/poke-intel/backups:/app/backups \
   poke-intel:local
+```
+
+确认容器已运行，再单独创建管理员（会在终端交互输入密码）：
+
+```bash
+docker ps --filter name=poke-intel
 docker logs --tail 100 poke-intel
+curl -f http://127.0.0.1:3001/api/v1/status
+```
+
+```bash
 docker exec -it poke-intel node scripts/admin.mjs admin 管理员
 ```
 

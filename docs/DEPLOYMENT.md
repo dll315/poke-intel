@@ -58,6 +58,11 @@ docker compose ps
 cd /opt/poke-intel
 ls -l Dockerfile package-lock.json .env
 docker build -t poke-intel:local .
+```
+
+**只有上一段构建成功，才能执行下一段。** 如果报错 `EOF`，镜像尚未生成；先按下方[构建中断或 EOF](#构建中断或-eof)排查，不要运行 `docker run`。
+
+```bash
 docker volume create poke-intel-data
 sudo install -d -o 1000 -g 1000 -m 700 /opt/poke-intel/backups
 docker run -d --name poke-intel --restart unless-stopped \
@@ -68,11 +73,35 @@ docker run -d --name poke-intel --restart unless-stopped \
   -v poke-intel-data:/app/data \
   -v /opt/poke-intel/backups:/app/backups \
   poke-intel:local
+```
+
+容器启动后，先确认服务可用，再单独运行交互式管理员命令：
+
+```bash
+docker ps --filter name=poke-intel
 docker logs --tail 100 poke-intel
+curl -f http://127.0.0.1:3001/api/v1/status
+```
+
+```bash
 docker exec -it poke-intel node scripts/admin.mjs admin 管理员
 ```
 
 `ls` 必须同时列出这三个文件，才能继续构建；否则先按下方恢复步骤找准源码目录。如果已有真实备案号，可在构建命令中加入 `--build-arg VITE_ICP_NUMBER=你的实际备案号`；没有就保持上面的原命令，勿填占位文字。`ORIGIN`、`ALLOWED_ORIGINS`、监控和机器人配置由 `.env` 提供，**请先编辑 `.env` 再启动**。检查状态：`curl -f http://127.0.0.1:3001/api/v1/status`，若 `curl` 未安装，Ubuntu 执行 `sudo apt install curl`，OpenCloudOS 执行 `sudo dnf install curl`。
+
+### 构建中断或 EOF
+
+如果 `docker build` 报 `failed to receive status ... EOF`，这是构建连接中断的信息，单靠这一行不能判断是 Docker 服务、磁盘、内存还是下载环节。不要反复执行 `docker run`，也不要删除 `poke-intel-data` 数据卷。先检查：
+
+```bash
+docker version
+free -h
+df -h / /var/lib/docker
+journalctl -u docker.service -b -n 60 --no-pager
+journalctl -k -b --no-pager | grep -Ei 'out of memory|oom|killed process' | tail -n 20
+```
+
+如果 `docker version` 能显示 Server 信息，再从源码目录运行 `docker build --progress=plain -t poke-intel:local .`，根据最后失败的步骤处理；若 Server 不可用，先查看 Docker 服务日志。只有构建成功且 `docker image inspect poke-intel:local` 能找到镜像，才运行容器。不要把 `.env`、机器人链接或密钥贴到公开日志中。
 
 ### 找不到 Dockerfile 时
 
