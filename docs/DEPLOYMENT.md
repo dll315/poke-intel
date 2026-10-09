@@ -91,12 +91,12 @@ cp .env.example .env
 ls -l Dockerfile package-lock.json .env
 ```
 
-编辑这个新目录里的 `.env` 后，从 `docker build -t poke-intel:local .` 继续。原 `docker run` 命令的备份挂载 `/opt/poke-intel/backups:/app/backups` 可以保持不变；命名卷 `poke-intel-data` 若已创建也无需再次创建。如果 `/opt/poke-intel-app` 已存在，先检查其内容，不要覆盖。`docker build` 失败时镜像尚未生成，先不要执行 `docker run`。
+编辑这个新目录里的 `.env` 后，从 `docker build -t poke-intel:local .` 继续。原 `docker run` 命令的备份挂载 `/opt/poke-intel/backups:/app/backups` 可以保持不变；命名卷 `poke-intel-data` 若已创建也无需再次创建。如果 `/opt/poke-intel-app` 已存在，先检查其内容，不要覆盖。`docker build` 失败时镜像尚未生成，先不要执行 `docker run`。后续更新也应进入实际存放 `Dockerfile` 的源码目录；采用上面恢复步骤的服务器应使用 `/opt/poke-intel-app`。
 
 更新时先备份，再替换容器；数据库仍在命名卷中：
 
 ```bash
-cd /opt/poke-intel
+cd /opt/poke-intel  # 如果源码克隆到了 /opt/poke-intel-app，改为该目录
 docker exec poke-intel node scripts/backup.mjs
 git pull --ff-only
 docker build -t poke-intel:local .
