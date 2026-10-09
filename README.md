@@ -6,6 +6,41 @@
 
 **数据说明：**首次启动为空数据库，不会显示伪造情报。配置外部来源后可同步 Alphapedia 数据。支持企业微信机器人群推送；当前没有个人浏览器推送、短信或自动密码找回。玩家情报经管理员审核后展示；外部头目记录按来源时间自动展示，是否仍有效请以游戏内情况为准。
 
+## Ubuntu 用 `docker run` 部署（无域名）
+
+这是本仓库的完整网站部署方式，网页、账号、数据库、实时监控和企业微信推送都在同一个容器中运行。**先安装 [Docker Engine](https://docs.docker.com/engine/install/ubuntu/)，准备公网 IP，并在云服务器安全组开放 80/443；3001 不对公网开放。**无域名时使用 [公网 IP 证书与 Nginx 的详细步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)提供 HTTPS。以下命令在 Ubuntu 服务器执行：
+
+```bash
+sudo mkdir -p /opt/poke-intel
+sudo chown "$USER":"$USER" /opt/poke-intel
+git clone https://github.com/dll315/poke-intel.git /opt/poke-intel
+cd /opt/poke-intel
+cp .env.example .env
+openssl rand -hex 32
+nano .env
+chmod 600 .env
+```
+
+把生成的 64 位十六进制密钥填入 `.env` 的 `SETTINGS_ENCRYPTION_KEY`。同时将 `ORIGIN`、`ALLOWED_ORIGINS` 都改为 `https://你的实际公网IP`，并设置 `NODE_ENV=production`、`HOST=0.0.0.0`、`TRUST_PROXY=1`；不要保留示例中的 `localhost`。如确认可复用 Alphapedia 数据，再按[数据接入说明](docs/DEPLOYMENT.md#发布前准备)开启对应监控。
+
+```bash
+docker build -t poke-intel:local .
+docker volume create poke-intel-data
+sudo install -d -o 1000 -g 1000 -m 700 /opt/poke-intel/backups
+docker run -d --name poke-intel --restart unless-stopped \
+  --env-file .env \
+  -e NODE_ENV=production -e HOST=0.0.0.0 -e PORT=3001 \
+  -e DB_PATH=/app/data/poke.db -e TRUST_PROXY=1 \
+  -p 127.0.0.1:3001:3001 \
+  -v poke-intel-data:/app/data \
+  -v /opt/poke-intel/backups:/app/backups \
+  poke-intel:local
+docker logs --tail 100 poke-intel
+docker exec -it poke-intel node scripts/admin.mjs admin 管理员
+```
+
+管理员命令会在终端询问密码。容器启动后，按[公网 IP HTTPS 步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)安装 Nginx 和证书，最终访问 `https://你的实际公网IP`。先用 `curl -f http://127.0.0.1:3001/api/v1/status` 检查后台；如果 `curl` 未安装，执行 `sudo apt install curl`。数据库保存在 `poke-intel-data`，更新时不要删除这个卷。完整的[备份、更新和排错命令](docs/DEPLOYMENT.md#方式二单容器-docker-run)在部署指南中。
+
 ## 本地启动
 
 需要 Node.js 24.19 或更高的 24.x、npm。使用 Node 原生 SQLite，数据库默认位于 `data/poke.db`，该目录、`.env` 均不进入版本控制。
@@ -22,7 +57,7 @@ npm run server
 npm run dev
 ```
 
-浏览器打开 `http://127.0.0.1:5173` 或 `http://localhost:5173`。示例配置已将两个本地地址加入 `ALLOWED_ORIGINS`，不会再因地址写法不同触发“请求来源校验失败”。生产环境只填写实际使用的 HTTPS 域名。
+浏览器打开 `http://127.0.0.1:5173` 或 `http://localhost:5173`。示例配置已将两个本地地址加入 `ALLOWED_ORIGINS`，不会再因地址写法不同触发“请求来源校验失败”。生产环境只填写实际使用的 HTTPS 域名或公网 IP 来源。
 
 ## Alphapedia 刷新资料库
 
