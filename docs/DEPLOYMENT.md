@@ -16,9 +16,9 @@
    git clone https://github.com/dll315/poke-intel.git /opt/poke-intel
    cd /opt/poke-intel
    cp .env.example .env
-   nano .env
-   chmod 600 .env
    ```
+
+   如果 `ls -l /opt/poke-intel/Dockerfile` 已能看到文件，就跳过 `mkdir`、`chown` 和 `git clone`，直接进入源码目录；已有 `.env` 时也不要覆盖。**单独运行** `nano .env`，保存退出后再单独运行 `chmod 600 .env`。不要将编辑器和后续命令整段粘贴，以免把命令写入 `.env`。
 
 4. 将 `.env` 中的 `ORIGIN` 设为 `https://intel.example.com`，无域名时设为 `https://你的公网IP`；`ALLOWED_ORIGINS` 至少填相同地址，不要保留示例中的 `localhost`。设置 `NODE_ENV=production`、`HOST=0.0.0.0`、`PORT=3001`、`TRUST_PROXY=1`。如果使用 Pages 自定义域名，再把 Pages 域名以逗号加入 `ALLOWED_ORIGINS`。`SETTINGS_ENCRYPTION_KEY` 可用 `openssl rand -hex 32` 生成并妥善保存。只有确认可以复用 Alphapedia 数据时，才把 `ALPHAPEDIA_ENABLED`、`ALPHAPEDIA_PERMISSION_CONFIRMED`、`ALPHA_MONITOR_ENABLED`、`SWARM_MONITOR_ENABLED`、`PHENO_MONITOR_ENABLED` 设为 `1`。机器人链接可在管理员页面填写，不要提交到 Git。
 

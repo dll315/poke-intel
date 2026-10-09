@@ -17,9 +17,9 @@ git clone https://github.com/dll315/poke-intel.git /opt/poke-intel
 cd /opt/poke-intel
 cp .env.example .env
 openssl rand -hex 32
-nano .env
-chmod 600 .env
 ```
+
+如果 `ls -l /opt/poke-intel/Dockerfile` 已能看到文件，就跳过上面的 `mkdir`、`chown` 和 `git clone`，直接 `cd /opt/poke-intel`；已有 `.env` 时也不要覆盖。**单独运行** `nano .env`，编辑完成后按 Ctrl+O、回车、Ctrl+X 退出，再单独运行 `chmod 600 .env`。不要把编辑器命令和后续命令整段粘贴，否则后续文字可能写进 `.env`。
 
 把生成的 64 位十六进制密钥填入 `.env` 的 `SETTINGS_ENCRYPTION_KEY`。同时将 `ORIGIN`、`ALLOWED_ORIGINS` 都改为 `https://你的实际公网IP`，并设置 `NODE_ENV=production`、`HOST=0.0.0.0`、`TRUST_PROXY=1`；不要保留示例中的 `localhost`。如确认可复用 Alphapedia 数据，再按[数据接入说明](docs/DEPLOYMENT.md#发布前准备)开启对应监控。
 
