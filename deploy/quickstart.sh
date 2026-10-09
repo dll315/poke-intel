@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  echo '用法：bash deploy/quickstart.sh 你的公网IPv4' >&2
+  exit 2
+fi
+
+public_ip="$1"
+if [[ ! "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo '请输入不带 http:// 或 https:// 的公网 IPv4 地址。' >&2
+  exit 2
+fi
+IFS=. read -r -a octets <<< "$public_ip"
+for octet in "${octets[@]}"; do
+  if (( ${#octet} > 3 || 10#$octet > 255 )) || [[ ${#octet} -gt 1 && "$octet" == 0* ]]; then
+    echo 'IPv4 地址格式不正确。' >&2
+    exit 2
+  fi
+done
+first=$((10#${octets[0]}))
+second=$((10#${octets[1]}))
+third=$((10#${octets[2]}))
+if (( first == 0 || first == 10 || first == 127 || first >= 224 ||
+      (first == 100 && second >= 64 && second <= 127) ||
+      (first == 169 && second == 254) ||
+      (first == 172 && second >= 16 && second <= 31) ||
+      (first == 192 && (second == 168 || (second == 0 && third == 2))) ||
+      (first == 198 && second == 51 && third == 100) ||
+      (first == 203 && second == 0 && third == 113) )); then
+  echo '请填写服务器的真实公网 IPv4，不能使用内网、回环或文档示例地址。' >&2
+  exit 2
+fi
+
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+env_file="$project_dir/.env"
+backup_dir="$project_dir/backups"
+origin="https://$public_ip"
+cd "$project_dir"
+
+if ! docker info >/dev/null 2>&1; then
+  echo 'Docker 服务不可用，请先检查 docker version。' >&2
+  exit 1
+fi
+
+set_env() {
+  local key="$1" value="$2"
+  if grep -q "^${key}=" "$env_file"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+  else
+    printf '\n%s=%s\n' "$key" "$value" >> "$env_file"
+  fi
+}
+
+image='ghcr.io/dll315/poke-intel:latest'
+echo '正在从 GitHub 下载预构建镜像（最多等待 60 秒）……'
+if ! timeout 60s docker pull "$image"; then
+  image='poke-intel:local'
+  if docker image inspect "$image" >/dev/null 2>&1; then
+    echo '下载未成功，改用本机已有镜像。'
+  else
+    echo '镜像下载失败且本机没有镜像；现有容器未被删除。请检查网络或 GitHub 镜像包是否已设为 Public。' >&2
+    exit 1
+  fi
+fi
+
+if [[ ! -f "$env_file" ]]; then cp .env.example "$env_file"; fi
+chmod 600 "$env_file"
+set_env ORIGIN "$origin"
+set_env ALLOWED_ORIGINS "$origin"
+encryption_key="$(sed -n 's/^SETTINGS_ENCRYPTION_KEY=//p' "$env_file" | tail -n 1 | tr -d '\r')"
+if [[ -z "$encryption_key" ]]; then
+  set_env SETTINGS_ENCRYPTION_KEY "$(openssl rand -hex 32)"
+fi
+
+docker volume create poke-intel-data >/dev/null
+install -d -o 1000 -g 1000 -m 700 "$backup_dir"
+if docker container inspect poke-intel >/dev/null 2>&1; then
+  docker stop poke-intel >/dev/null
+  docker rm poke-intel >/dev/null
+fi
+
+docker run -d --name poke-intel --restart unless-stopped \
+  --env-file "$env_file" \
+  -e NODE_ENV=production -e HOST=0.0.0.0 -e PORT=3001 \
+  -e DB_PATH=/app/data/poke.db -e TRUST_PROXY=1 \
+  -p 127.0.0.1:3001:3001 \
+  -v poke-intel-data:/app/data \
+  -v "$backup_dir:/app/backups" \
+  "$image" >/dev/null
+
+for attempt in {1..20}; do
+  if docker exec poke-intel node -e "fetch('http://127.0.0.1:3001/api/v1/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
+    echo '后台已启动。本机接口：http://127.0.0.1:3001/api/v1/status'
+    echo '公网网页仍需配置 HTTPS；见 docs/DEPLOYMENT.md。'
+    exit 0
+  fi
+  sleep 1
+done
+
+echo '后台未能启动，错误日志如下：' >&2
+docker logs --tail 30 poke-intel >&2 || true
+exit 1

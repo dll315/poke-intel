@@ -4,6 +4,18 @@
 
 **系统提示：**下文的 Docker 镜像和 `docker run` 命令也适用于 OpenCloudOS，但 `apt`、snap 安装及 `/etc/nginx/sites-available` 等主机操作示例按 Ubuntu 编写。若终端提示符出现 `opencloudos`，主机软件使用 `dnf` 管理，请先确认系统版本，不要直接照搬 Ubuntu 的 Nginx/Certbot 安装段落。详见 [OpenCloudOS 官方软件包管理说明](https://docs.opencloudos.org/en/OCS/AdministratorGuide/Software_Management/)。
 
+## 快速启动已有源码
+
+源码已在 `/opt/poke-intel` 且 Docker 可用时，用一行命令启动后台；把示例 IP 换成实际公网 IPv4：
+
+```bash
+git -C /opt/poke-intel pull --ff-only && bash /opt/poke-intel/deploy/quickstart.sh 你的公网IP
+```
+
+脚本自动创建或修正 `.env` 的 `ORIGIN`、`ALLOWED_ORIGINS`，只在密钥缺失时生成新密钥；保留 `poke-intel-data` 数据卷和其他已有设置。它优先拉取 `ghcr.io/dll315/poke-intel:latest`，下载失败时使用本机已有的 `poke-intel:local` 镜像；两者都不可用时不删除旧容器。镜像由 GitHub Actions 构建；首次发布后若包仍显示 Private，仓库所有者须到包设置改为 Public，匿名服务器才可直接拉取。[GitHub 官方说明](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)指出容器包初次发布默认可能为 Private。
+
+脚本只将 3001 绑定到服务器本机，并通过健康接口确认后台已启动。**这不等于公网网页已经可用**：账号登录需要真正的 HTTPS，请继续按下文配置证书与反向代理；OpenCloudOS 的系统安装步骤不能照搬 Ubuntu 命令。首次启动后执行 `docker exec -it poke-intel node scripts/admin.mjs admin 管理员` 创建管理员。
+
 ## 发布前准备
 
 1. 准备一个指向服务器公网 IP 的域名，例如 `intel.example.com`；**没有域名也可以使用公网 IP 证书**，按下文“无域名：公网 IP + HTTPS”操作。安全组开放 80、443 和现有 SSH 端口；不要开放 3001。在中国大陆提供公网网站时，请按接入商要求处理相关备案或接入手续。

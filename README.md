@@ -6,6 +6,16 @@
 
 **数据说明：**首次启动为空数据库，不会显示伪造情报。配置外部来源后可同步 Alphapedia 数据。支持企业微信机器人群推送；当前没有个人浏览器推送、短信或自动密码找回。玩家情报经管理员审核后展示；外部头目记录按来源时间自动展示，是否仍有效请以游戏内情况为准。
 
+## 快速启动（已有源码）
+
+服务器已安装 Docker、源码在 `/opt/poke-intel` 时，只需把下面的示例 IP 换成真实公网 IPv4，然后执行：
+
+```bash
+git -C /opt/poke-intel pull --ff-only && bash /opt/poke-intel/deploy/quickstart.sh 你的公网IP
+```
+
+脚本会修正 `.env` 中的 HTTPS `ORIGIN`、补齐加密密钥并保留原有数据库卷；优先拉取 GitHub 预构建镜像，下载失败时使用本机已有的 `poke-intel:local` 镜像。若新发布的镜像包仍是 Private，仓库所有者需在 GitHub 包设置中将 `poke-intel` 改为 Public，才能免登录拉取。脚本确认的是**本机后台**启动；公网网页仍需按[HTTPS 步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)配置证书和反向代理，安全组开放 80/443。
+
 ## Linux 用 `docker run` 部署（无域名）
 
 这是本仓库的完整网站部署方式，网页、账号、数据库、实时监控和企业微信推送都在同一个容器中运行。**先安装 Docker Engine，准备公网 IP，并在云服务器安全组开放 80/443；3001 不对公网开放。**Docker 容器命令适用于 Ubuntu 和 OpenCloudOS；两者安装 Nginx、证书工具的系统命令不同，OpenCloudOS 不要照抄 Ubuntu 的 `apt` 命令。无域名时使用 [公网 IP 证书与 Nginx 的详细步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)提供 HTTPS。以下命令在服务器执行：
