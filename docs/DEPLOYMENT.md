@@ -2,6 +2,8 @@
 
 本项目有网页和 Node.js 后台两部分。后台负责账号、SQLite 数据库、Alphapedia 定时检查和企业微信推送，必须保持运行。推荐在 Ubuntu 服务器上用 Docker Compose 或 `docker run` 部署完整网站；GitHub Pages 只能托管前端文件，仍需另行部署后台。
 
+**系统提示：**下文的 Docker 镜像和 `docker run` 命令也适用于 OpenCloudOS，但 `apt`、snap 安装及 `/etc/nginx/sites-available` 等主机操作示例按 Ubuntu 编写。若终端提示符出现 `opencloudos`，主机软件使用 `dnf` 管理，请先确认系统版本，不要直接照搬 Ubuntu 的 Nginx/Certbot 安装段落。详见 [OpenCloudOS 官方软件包管理说明](https://docs.opencloudos.org/en/OCS/AdministratorGuide/Software_Management/)。
+
 ## 发布前准备
 
 1. 准备一个指向服务器公网 IP 的域名，例如 `intel.example.com`；**没有域名也可以使用公网 IP 证书**，按下文“无域名：公网 IP + HTTPS”操作。安全组开放 80、443 和现有 SSH 端口；不要开放 3001。在中国大陆提供公网网站时，请按接入商要求处理相关备案或接入手续。
@@ -53,6 +55,8 @@ docker compose ps
 此方式与 Compose 二选一；**不要让两个容器同时使用同一个数据库卷或占用同一个端口**。在项目目录运行：
 
 ```bash
+cd /opt/poke-intel
+ls -l Dockerfile package-lock.json .env
 docker build -t poke-intel:local .
 docker volume create poke-intel-data
 sudo install -d -o 1000 -g 1000 -m 700 /opt/poke-intel/backups
@@ -68,7 +72,26 @@ docker logs --tail 100 poke-intel
 docker exec -it poke-intel node scripts/admin.mjs admin 管理员
 ```
 
-如果已有真实备案号，可在构建命令中加入 `--build-arg VITE_ICP_NUMBER=你的实际备案号`；没有就保持上面的原命令，勿填占位文字。`ORIGIN`、`ALLOWED_ORIGINS`、监控和机器人配置由 `.env` 提供，**请先编辑 `.env` 再启动**。检查状态：`curl -f http://127.0.0.1:3001/api/v1/status`，若 `curl` 未安装，先执行 `sudo apt install curl`。
+`ls` 必须同时列出这三个文件，才能继续构建；否则先按下方恢复步骤找准源码目录。如果已有真实备案号，可在构建命令中加入 `--build-arg VITE_ICP_NUMBER=你的实际备案号`；没有就保持上面的原命令，勿填占位文字。`ORIGIN`、`ALLOWED_ORIGINS`、监控和机器人配置由 `.env` 提供，**请先编辑 `.env` 再启动**。检查状态：`curl -f http://127.0.0.1:3001/api/v1/status`，若 `curl` 未安装，Ubuntu 执行 `sudo apt install curl`，OpenCloudOS 执行 `sudo dnf install curl`。
+
+### 找不到 Dockerfile 时
+
+`docker build ... .` 最后的 `.` 表示“使用当前目录”。若终端仍显示 `~`，Docker 会在用户主目录找 `Dockerfile`，即使镜像仓库已在 GitHub 也不会自动下载源码。先检查是否已经把仓库克隆到 `/opt/poke-intel`：
+
+```bash
+ls -la /opt/poke-intel
+```
+
+如果能看到 `Dockerfile`，执行 `cd /opt/poke-intel`，然后继续构建。如果该目录只有先前创建的 `backups/`，**不要删除备份目录或数据卷**；Git 不能克隆进这个非空目录，可把源码克隆到另一处：
+
+```bash
+git clone https://github.com/dll315/poke-intel.git /opt/poke-intel-app
+cd /opt/poke-intel-app
+cp .env.example .env
+ls -l Dockerfile package-lock.json .env
+```
+
+编辑这个新目录里的 `.env` 后，从 `docker build -t poke-intel:local .` 继续。原 `docker run` 命令的备份挂载 `/opt/poke-intel/backups:/app/backups` 可以保持不变；命名卷 `poke-intel-data` 若已创建也无需再次创建。如果 `/opt/poke-intel-app` 已存在，先检查其内容，不要覆盖。`docker build` 失败时镜像尚未生成，先不要执行 `docker run`。
 
 更新时先备份，再替换容器；数据库仍在命名卷中：
 
