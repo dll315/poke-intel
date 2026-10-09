@@ -63,8 +63,19 @@ jobs:
               -v poke-intel-ci-data:/app/data \
               -v "$backup_dir:/app/backups" \
               poke-intel:ci >/dev/null
-            curl --fail --silent --show-error --retry 30 --retry-connrefused --retry-delay 1 \
-              http://127.0.0.1:3001/api/v1/status >/dev/null
+            local ready=0
+            for attempt in {1..30}; do
+              if curl --fail --silent --max-time 2 http://127.0.0.1:3001/api/v1/status >/dev/null; then
+                ready=1
+                break
+              fi
+              if [[ "$(docker inspect -f '{{.State.Running}}' poke-intel-ci)" != true ]]; then break; fi
+              sleep 1
+            done
+            if [[ "$ready" != 1 ]]; then
+              docker logs --tail 100 poke-intel-ci
+              return 1
+            fi
           }
           start_container
           curl --fail --silent --show-error --output /dev/null \
