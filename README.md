@@ -1,6 +1,6 @@
 # Poke 情报站
 
-**部署入口：**[Ubuntu、Docker Compose、docker run 与 GitHub Pages 详细指南](docs/DEPLOYMENT.md)。GitHub Pages 仅承载前端，账号、实时监控和企业微信推送仍需服务器后台。
+**部署入口：**[Ubuntu、Docker Compose、docker run、无域名公网 IP HTTPS 与 GitHub Pages 详细指南](docs/DEPLOYMENT.md)。GitHub Pages 仅承载前端，账号、实时监控和企业微信推送仍需服务器后台。
 
 面向公开玩家的中文 PokeMMO 头目、群聚与合众奇遇情报网站。支持公开查询、用户名密码账号、上报、管理员审核、历史筛选、纠错与结束标记。网页适配手机和电脑，接口前缀 `/api/v1`，以后可接入微信小程序。
 
@@ -67,7 +67,7 @@ npm run test:ui
 
 ## Ubuntu 部署
 
-以下示例域名 `intel.example.com` 必须替换为你的已备案域名/子域名。服务器尚未自动操作，本项目不会读取或保存你的云服务器密码。
+以下示例域名 `intel.example.com` 必须替换为你的实际域名；**没有域名时请使用[公网 IP + HTTPS 步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)**。服务器尚未自动操作，本项目不会读取或保存你的云服务器密码。
 
 ### 1. 准备域名与运行环境
 

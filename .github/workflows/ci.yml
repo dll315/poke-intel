@@ -23,3 +23,62 @@ jobs:
         run: docker compose config --quiet
       - name: Build production container
         run: docker build -t poke-intel:ci .
+      - name: Validate IP Nginx templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ip-cert"
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -keyout "$RUNNER_TEMP/ip-cert/privkey.pem" \
+            -out "$RUNNER_TEMP/ip-cert/fullchain.pem" \
+            -subj '/CN=127.0.0.1' >/dev/null 2>&1
+          sed 's/SERVER_IP/127.0.0.1/g' deploy/nginx-ip.conf > "$RUNNER_TEMP/ip-http.conf"
+          sed 's/SERVER_IP/127.0.0.1/g' deploy/nginx-ip-https.conf > "$RUNNER_TEMP/ip-https.conf"
+          docker run --rm -v "$RUNNER_TEMP/ip-http.conf:/etc/nginx/conf.d/default.conf:ro" nginx:alpine nginx -t
+          docker run --rm \
+            -v "$RUNNER_TEMP/ip-https.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v "$RUNNER_TEMP/ip-cert:/etc/letsencrypt/live/127.0.0.1:ro" \
+            nginx:alpine nginx -t
+      - name: Smoke test docker run, backup and persistent data
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker volume create poke-intel-ci-data >/dev/null
+          backup_dir="$RUNNER_TEMP/poke-intel-backups"
+          mkdir -p "$backup_dir"
+          sudo chown 1000:1000 "$backup_dir"
+          cleanup() {
+            docker rm -f poke-intel-ci >/dev/null 2>&1 || true
+            docker volume rm poke-intel-ci-data >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          start_container() {
+            docker run -d --name poke-intel-ci --restart unless-stopped \
+              --env-file .env.example \
+              -e NODE_ENV=production -e HOST=0.0.0.0 -e PORT=3001 \
+              -e ORIGIN=https://intel.example.com \
+              -e ALLOWED_ORIGINS=https://intel.example.com \
+              -e DB_PATH=/app/data/poke.db -e TRUST_PROXY=1 \
+              -p 127.0.0.1:3001:3001 \
+              -v poke-intel-ci-data:/app/data \
+              -v "$backup_dir:/app/backups" \
+              poke-intel:ci >/dev/null
+            curl --fail --silent --show-error --retry 30 --retry-connrefused --retry-delay 1 \
+              http://127.0.0.1:3001/api/v1/status >/dev/null
+          }
+          start_container
+          curl --fail --silent --show-error --output /dev/null \
+            -H 'Origin: https://intel.example.com' \
+            -H 'Content-Type: application/json' \
+            --data '{"username":"containercheck","nickname":"CI","password":"container-password-123"}' \
+            http://127.0.0.1:3001/api/v1/auth/register
+          docker exec poke-intel-ci node scripts/backup.mjs
+          compgen -G "$backup_dir/poke-*.db" >/dev/null
+          docker stop poke-intel-ci >/dev/null
+          docker rm poke-intel-ci >/dev/null
+          start_container
+          curl --fail --silent --show-error --output /dev/null \
+            -H 'Origin: https://intel.example.com' \
+            -H 'Content-Type: application/json' \
+            --data '{"username":"containercheck","password":"container-password-123"}' \
+            http://127.0.0.1:3001/api/v1/auth/login

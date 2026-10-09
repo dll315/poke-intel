@@ -4,21 +4,21 @@
 
 ## 发布前准备
 
-1. 准备一个指向服务器公网 IP 的域名，例如 `intel.example.com`。在中国大陆提供公网网站时，按接入商要求完成域名备案。安全组开放 80、443 和现有 SSH 端口；不要开放 3001。
-2. 在服务器安装 [Docker Engine 与 Compose 插件](https://docs.docker.com/engine/install/ubuntu/)、Nginx 和 Certbot。4 核 4 GB 的单机可先用此方案；数据库使用一个持久卷，**不要启动多个共享该库的后台副本**。
-3. 从 GitHub 克隆仓库，进入项目目录。以下命令假定目录为 `/opt/poke-intel`，域名和仓库地址均需替换：
+1. 准备一个指向服务器公网 IP 的域名，例如 `intel.example.com`；**没有域名也可以使用公网 IP 证书**，按下文“无域名：公网 IP + HTTPS”操作。安全组开放 80、443 和现有 SSH 端口；不要开放 3001。在中国大陆提供公网网站时，请按接入商要求处理相关备案或接入手续。
+2. 在服务器安装 [Docker Engine 与 Compose 插件](https://docs.docker.com/engine/install/ubuntu/)。4 核 4 GB 的单机可先用此方案；数据库使用一个持久卷，**不要启动多个共享该库的后台副本**。Docker 安装后先执行 `docker version`；若当前账号没有访问 Docker 的权限，可在本指南的 Docker 命令前加 `sudo`，或按 [Docker 官方说明](https://docs.docker.com/engine/install/linux-postinstall/)配置权限。
+3. 从 GitHub 克隆仓库，进入项目目录。以下命令假定目录为 `/opt/poke-intel`：
 
    ```bash
    sudo mkdir -p /opt/poke-intel
    sudo chown "$USER":"$USER" /opt/poke-intel
-   git clone https://github.com/OWNER/REPO.git /opt/poke-intel
+   git clone https://github.com/dll315/poke-intel.git /opt/poke-intel
    cd /opt/poke-intel
    cp .env.example .env
    nano .env
    chmod 600 .env
    ```
 
-4. 至少将 `.env` 中的 `ORIGIN` 设为 `https://intel.example.com`，`NODE_ENV=production`、`HOST=0.0.0.0`、`PORT=3001`、`TRUST_PROXY=1`、`ALLOWED_ORIGINS=https://intel.example.com`。如果使用 Pages 自定义域名，再把 Pages 域名以逗号加入 `ALLOWED_ORIGINS`。`SETTINGS_ENCRYPTION_KEY` 用 `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"` 生成并妥善保存；如果服务器未安装 Node，可在本地生成后粘贴。只有确认可以复用 Alphapedia 数据时，才把 `ALPHAPEDIA_ENABLED`、`ALPHAPEDIA_PERMISSION_CONFIRMED`、`ALPHA_MONITOR_ENABLED`、`SWARM_MONITOR_ENABLED`、`PHENO_MONITOR_ENABLED` 设为 `1`。机器人链接可在管理员页面填写，不要提交到 Git。
+4. 将 `.env` 中的 `ORIGIN` 设为 `https://intel.example.com`，无域名时设为 `https://你的公网IP`；`ALLOWED_ORIGINS` 至少填相同地址，不要保留示例中的 `localhost`。设置 `NODE_ENV=production`、`HOST=0.0.0.0`、`PORT=3001`、`TRUST_PROXY=1`。如果使用 Pages 自定义域名，再把 Pages 域名以逗号加入 `ALLOWED_ORIGINS`。`SETTINGS_ENCRYPTION_KEY` 可用 `openssl rand -hex 32` 生成并妥善保存。只有确认可以复用 Alphapedia 数据时，才把 `ALPHAPEDIA_ENABLED`、`ALPHAPEDIA_PERMISSION_CONFIRMED`、`ALPHA_MONITOR_ENABLED`、`SWARM_MONITOR_ENABLED`、`PHENO_MONITOR_ENABLED` 设为 `1`。机器人链接可在管理员页面填写，不要提交到 Git。
 
 `ORIGIN` 是后台网站地址，必须是 HTTPS 的完整来源（协议和域名，可含端口，不带路径或末尾斜杠）。`DB_PATH` 对 Docker 容器应为 `/app/data/poke.db`。`.env`、数据库和备份目录已被 Git 忽略。
 
@@ -53,7 +53,7 @@ docker compose ps
 此方式与 Compose 二选一；**不要让两个容器同时使用同一个数据库卷或占用同一个端口**。在项目目录运行：
 
 ```bash
-docker build --build-arg VITE_ICP_NUMBER=你的实际备案号 -t poke-intel:local .
+docker build -t poke-intel:local .
 docker volume create poke-intel-data
 sudo install -d -o 1000 -g 1000 -m 700 /opt/poke-intel/backups
 docker run -d --name poke-intel --restart unless-stopped \
@@ -68,7 +68,20 @@ docker logs --tail 100 poke-intel
 docker exec -it poke-intel node scripts/admin.mjs admin 管理员
 ```
 
-未取得备案号时，将 `--build-arg VITE_ICP_NUMBER=...` 整段去掉。`ORIGIN`、`ALLOWED_ORIGINS`、监控和机器人配置仍由 `.env` 提供。更新时先 `docker exec poke-intel node scripts/backup.mjs`，然后拉取代码、重新 `docker build`，执行 `docker stop poke-intel`、`docker rm poke-intel`，再用**同一条** `docker run` 命令启动；不要删除 `poke-intel-data` 卷。检查状态可运行 `curl -f http://127.0.0.1:3001/api/v1/status`。
+如果已有真实备案号，可在构建命令中加入 `--build-arg VITE_ICP_NUMBER=你的实际备案号`；没有就保持上面的原命令，勿填占位文字。`ORIGIN`、`ALLOWED_ORIGINS`、监控和机器人配置由 `.env` 提供，**请先编辑 `.env` 再启动**。检查状态：`curl -f http://127.0.0.1:3001/api/v1/status`，若 `curl` 未安装，先执行 `sudo apt install curl`。
+
+更新时先备份，再替换容器；数据库仍在命名卷中：
+
+```bash
+cd /opt/poke-intel
+docker exec poke-intel node scripts/backup.mjs
+git pull --ff-only
+docker build -t poke-intel:local .
+docker stop poke-intel
+docker rm poke-intel
+```
+
+然后重复上面的**同一条** `docker run` 命令，并检查 `docker logs --tail 100 poke-intel` 和健康接口。不要执行 `docker volume rm poke-intel-data` 或 `docker rm -v poke-intel`。如需修改 `.env`，重新创建容器才会生效；单纯 `docker restart` 不会重新读取环境文件。
 
 ## 给两种 Docker 部署配置 HTTPS
 
@@ -93,6 +106,56 @@ sudo certbot certonly --webroot -w /var/www/certbot -d intel.example.com
 证书签发成功后，用 [HTTPS 模板](../deploy/nginx-https.conf) 覆盖站点配置，替换所有域名及证书路径，再执行 `sudo nginx -t && sudo systemctl reload nginx`。如主机已有该软链接，不要重复创建。可用 `sudo certbot renew --dry-run` 测试续期，并配置证书续期后重载 Nginx。后台的 `TRUST_PROXY=1` 只适用于这个回环地址上的反向代理；模板会覆盖访客传入的转发 IP 头。
 
 首次访问 `https://intel.example.com` 后，确认注册、登录、管理员审核、公开情报及机器人测试。若提示“请求来源校验失败”，核对浏览器实际访问的来源与 `.env` 中 `ORIGIN` / `ALLOWED_ORIGINS`，修改后重建或重启容器。
+
+## 无域名：公网 IP + HTTPS
+
+如果没有域名，2026 年起可以用 [Let's Encrypt 公网 IP 证书](https://letsencrypt.org/2026/03/11/shorter-certs-certbot.html)。证书有效期约六天，**必须确认自动续期可用**。需要固定、可从互联网访问的公网 IPv4，安全组开放 80/443；Certbot 须为 **5.4 或更高版本**。GitHub Pages 与 IP 后台属于不同站点，因此 Pages 登录仍不可用；直接打开 `https://公网IP` 使用完整网站。
+
+先按“发布前准备”编辑 `.env`，把 `ORIGIN` 和 `ALLOWED_ORIGINS` 均设为 `https://实际公网IP`，按 Compose 或 `docker run` 方式启动容器。3001 仍只绑定服务器回环地址。然后在服务器安装 Nginx、snapd 与新版 Certbot（如果已安装 Certbot snap，跳过 `snap install`）：
+
+```bash
+sudo apt update
+sudo apt install nginx snapd curl
+sudo systemctl enable --now nginx
+sudo snap install --classic certbot
+sudo /snap/bin/certbot --version
+```
+
+确认版本至少为 5.4 后，在同一个终端输入公网 IPv4。使用单独的 Nginx 站点文件，不覆盖其他网站；如果已存在同名文件，先改用其他文件名并相应调整下面的命令：
+
+```bash
+read -rp '请输入服务器公网 IPv4：' SERVER_IP
+sudo mkdir -p /var/www/certbot
+sudo cp deploy/nginx-ip.conf /etc/nginx/sites-available/poke-intel-ip
+sudo sed -i "s/SERVER_IP/$SERVER_IP/g" /etc/nginx/sites-available/poke-intel-ip
+sudo ln -s /etc/nginx/sites-available/poke-intel-ip /etc/nginx/sites-enabled/poke-intel-ip
+sudo nginx -t
+sudo systemctl reload nginx
+sudo /snap/bin/certbot certonly --preferred-profile shortlived \
+  --webroot --webroot-path /var/www/certbot --ip-address "$SERVER_IP"
+```
+
+签发成功后再安装 HTTPS 站点模板（证书路径会按这个 IP 填入），并检查证书与后台：
+
+```bash
+sudo cp deploy/nginx-ip-https.conf /etc/nginx/sites-available/poke-intel-ip
+sudo sed -i "s/SERVER_IP/$SERVER_IP/g" /etc/nginx/sites-available/poke-intel-ip
+sudo nginx -t
+sudo systemctl reload nginx
+curl -f "https://$SERVER_IP/api/v1/status"
+```
+
+续期成功后必须让 Nginx 重新读取证书。创建 Certbot 的部署钩子，并检查自动续期定时器：
+
+```bash
+sudo install -d /etc/letsencrypt/renewal-hooks/deploy
+printf '#!/bin/sh\nnginx -t && systemctl reload nginx\n' | sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh >/dev/null
+sudo chmod 755 /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+sudo /snap/bin/certbot renew --dry-run
+systemctl list-timers --all | grep -i certbot
+```
+
+如果最后没有列出 Certbot 自动续期任务，先排查 snap 的定时器，再开放网站给用户。IP 变化后，证书、Nginx 模板和 `.env` 的来源地址都要更新。证书申请失败时先检查公网 IP 是否真正归这台服务器、80 端口是否从公网可达，以及 `sudo nginx -t` 是否通过；不要把 3001 直接暴露给公网。
 
 ## 方式三：GitHub Pages 前端 + Ubuntu 后台
 
