@@ -8,19 +8,19 @@
 
 ## 一条命令启动后台
 
-Linux 服务器已安装并启动 Docker，且能访问 GitHub 和镜像仓库时，把 `你的公网IP` 换成服务器真实公网 IPv4，执行一行：
+Linux 服务器已安装并启动 Docker，且能访问 GitHub 和镜像仓库时，直接执行一行，无须填写 IP：
 
 ```bash
-f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/dll315/poke-intel/main/deploy/quickstart.sh -o "$f" && bash "$f" 你的公网IP
+f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/dll315/poke-intel/main/deploy/quickstart.sh -o "$f" && bash "$f"
 ```
 
 已有源码的服务器也可以用下面一行更新脚本并部署：
 
 ```bash
-git -C /opt/poke-intel pull --ff-only && bash /opt/poke-intel/deploy/quickstart.sh 你的公网IP
+git -C /opt/poke-intel pull --ff-only && bash /opt/poke-intel/deploy/quickstart.sh
 ```
 
-脚本不依赖源码：会创建配置、补齐加密密钥、保留原有数据库卷，拉取[公开的 GitHub 预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，并启动容器。镜像提供常见的 Linux x86_64 与 ARM64 版本，Docker 会按服务器架构选择。镜像下载失败且本机有 `poke-intel:local` 时会使用本机镜像。脚本确认的是**本机后台**启动；公网网页仍需按[HTTPS 步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)配置证书和反向代理，安全组开放 80/443。
+脚本不依赖源码：会创建配置、补齐加密密钥、保留原有数据库卷，拉取[公开的 GitHub 预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，并启动容器。镜像提供常见的 Linux x86_64 与 ARM64 版本，Docker 会按服务器架构选择。镜像下载失败且本机有 `poke-intel:local` 时会使用本机镜像。不填 IP 时仅在服务器本机监听，`ORIGIN` 默认是 `http://localhost:3001`；已有 HTTPS 地址会保留。公网网页仍需按[HTTPS 步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)配置证书和反向代理，安全组开放 80/443。配置公网 HTTPS 时，可以给脚本传入实际公网 IPv4。
 
 ## Linux 用 `docker run` 部署（无域名）
 

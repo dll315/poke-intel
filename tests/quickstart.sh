@@ -61,6 +61,13 @@ for invalid_ip in 'not-an-ip' '127.0.0.1' '203.0.113.10'; do
   [[ ! -e "$MOCK_LOG" ]] || { echo 'Invalid IP touched Docker' >&2; exit 1; }
 done
 
+export MOCK_LOG="$temp_dir/no-ip.log" POKE_INTEL_HOME="$temp_dir/no-ip-state"
+bash "$temp_dir/project/deploy/quickstart.sh" > "$temp_dir/no-ip-output.log" 2>&1
+grep -qx 'ORIGIN=http://localhost:3001' "$POKE_INTEL_HOME/.env"
+grep -qx 'ALLOWED_ORIGINS=http://localhost:3001' "$POKE_INTEL_HOME/.env"
+grep -q '^run .*ghcr.io/dll315/poke-intel:latest$' "$MOCK_LOG"
+
+export MOCK_LOG="$temp_dir/docker.log" POKE_INTEL_HOME="$temp_dir/project/state"
 bash "$temp_dir/project/deploy/quickstart.sh" '8.8.8.8' > "$temp_dir/install.log" 2>&1
 grep -qx 'ORIGIN=https://8.8.8.8' "$POKE_INTEL_HOME/.env"
 grep -qx 'ALLOWED_ORIGINS=https://8.8.8.8' "$POKE_INTEL_HOME/.env"
@@ -122,5 +129,10 @@ grep -qx 'ORIGIN=https://api.example.com' "$temp_dir/project/.env"
 grep -qx 'ALLOWED_ORIGINS=https://app.example.com,https://api.example.com' "$temp_dir/project/.env"
 grep -Fq "$temp_dir/old-backups:/app/backups" "$MOCK_LOG"
 ! grep -q 'poke-intel-backups:/app/backups' "$MOCK_LOG"
+
+export MOCK_LOG="$temp_dir/no-ip-upgrade.log"
+bash "$temp_dir/project/deploy/quickstart.sh" > "$temp_dir/no-ip-upgrade-output.log" 2>&1
+grep -qx 'ORIGIN=https://api.example.com' "$temp_dir/project/.env"
+grep -qx 'SETTINGS_ENCRYPTION_KEY=existing-secret' "$temp_dir/project/.env"
 
 echo 'quickstart smoke checks passed'

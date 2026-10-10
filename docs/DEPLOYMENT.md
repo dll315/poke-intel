@@ -6,23 +6,23 @@
 
 ## 一条命令启动后台
 
-Linux 服务器已安装并启动 Docker，且能访问 GitHub 和镜像仓库时，把 `你的公网IP` 换成真实公网 IPv4，运行一行：
+Linux 服务器已安装并启动 Docker，且能访问 GitHub 和镜像仓库时，运行一行即可启动本机后台，无须填写 IP：
 
 ```bash
-f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/dll315/poke-intel/main/deploy/quickstart.sh -o "$f" && bash "$f" 你的公网IP
+f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/dll315/poke-intel/main/deploy/quickstart.sh -o "$f" && bash "$f"
 ```
 
 已有源码且路径为 `/opt/poke-intel` 时，可以用下面一行更新脚本并部署：
 
 ```bash
-git -C /opt/poke-intel pull --ff-only && bash /opt/poke-intel/deploy/quickstart.sh 你的公网IP
+git -C /opt/poke-intel pull --ff-only && bash /opt/poke-intel/deploy/quickstart.sh
 ```
 
 脚本可独立运行，无须克隆源码。它自动创建 `.env`；升级时沿用原有密钥、HTTPS 域名、其他允许访问的来源、数据库卷和备份挂载。找不到旧容器的 `.env` 时会停止安装，避免丢失机器人链接的解密密钥。新部署的备份放在 `poke-intel-backups` 命名卷；已有备份目录时继续使用该目录。它优先拉取[已公开的预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，下载失败时仅使用与服务器 CPU 架构匹配的本机 `poke-intel:local` 镜像；两者都不可用时不删除旧容器。镜像提供 Linux x86_64 与 ARM64 版本。
 
-原来安装在 `/opt/poke-intel-app` 的服务器也可直接运行第一条命令；脚本会寻找原有 `.env`。如果服务器同时有 `/opt/poke-intel` 和 `/opt/poke-intel-app` 两份配置，请明确指定旧容器所用目录，例如 `POKE_INTEL_HOME=/opt/poke-intel-app bash /opt/poke-intel-app/deploy/quickstart.sh 你的公网IP`。使用其他自定义目录时同样设置 `POKE_INTEL_HOME`，不要新建一份空配置。
+原来安装在 `/opt/poke-intel-app` 的服务器也可直接运行第一条命令；脚本会寻找原有 `.env`。如果服务器同时有 `/opt/poke-intel` 和 `/opt/poke-intel-app` 两份配置，请明确指定旧容器所用目录，例如 `POKE_INTEL_HOME=/opt/poke-intel-app bash /opt/poke-intel-app/deploy/quickstart.sh`。使用其他自定义目录时同样设置 `POKE_INTEL_HOME`，不要新建一份空配置。
 
-脚本只将 3001 绑定到服务器本机，并通过健康接口确认后台已启动。**这不等于公网网页已经可用**：账号登录需要真正的 HTTPS，请继续按下文配置证书与反向代理；OpenCloudOS 的系统安装步骤不能照搬 Ubuntu 命令。首次启动后执行 `docker exec -it poke-intel node scripts/admin.mjs admin 管理员` 创建管理员。Alphapedia 监控默认关闭，确认数据可复用后才按下文开启；否则网页可以启动，但不会自动收到头目、群聚和奇遇数据。
+脚本只将 3001 绑定到服务器本机，并通过健康接口确认后台已启动。不填 IP 时，新配置使用 `http://localhost:3001`，可从服务器本机访问或通过 SSH 端口转发访问；已有 HTTPS 地址会保留。**这不等于公网网页已经可用**：公网账号登录需要真正的 HTTPS，请继续按下文配置证书与反向代理。准备好公网 IP 证书后，可运行 `bash /opt/poke-intel/deploy/quickstart.sh 你的公网IP` 写入对应 HTTPS 来源并重建容器；OpenCloudOS 的系统安装步骤不能照搬 Ubuntu 命令。首次启动后执行 `docker exec -it poke-intel node scripts/admin.mjs admin 管理员` 创建管理员。Alphapedia 监控默认关闭，确认数据可复用后才按下文开启；否则网页可以启动，但不会自动收到头目、群聚和奇遇数据。
 
 ## 发布前准备
 

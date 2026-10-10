@@ -1,35 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 1 ]]; then
-  echo '用法：bash deploy/quickstart.sh 你的公网IPv4' >&2
+if [[ $# -gt 1 ]]; then
+  echo '用法：bash deploy/quickstart.sh [公网IPv4]' >&2
   exit 2
 fi
 
-public_ip="$1"
-if [[ ! "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+public_ip="${1:-}"
+if [[ -n "$public_ip" && ! "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo '请输入不带 http:// 或 https:// 的公网 IPv4 地址。' >&2
   exit 2
 fi
-IFS=. read -r -a octets <<< "$public_ip"
-for octet in "${octets[@]}"; do
-  if (( ${#octet} > 3 || 10#$octet > 255 )) || [[ ${#octet} -gt 1 && "$octet" == 0* ]]; then
-    echo 'IPv4 地址格式不正确。' >&2
-    exit 2
-  fi
-done
-first=$((10#${octets[0]}))
-second=$((10#${octets[1]}))
-third=$((10#${octets[2]}))
-if (( first == 0 || first == 10 || first == 127 || first >= 224 ||
+if [[ -n "$public_ip" ]]; then
+  IFS=. read -r -a octets <<< "$public_ip"
+  for octet in "${octets[@]}"; do
+    if (( ${#octet} > 3 || 10#$octet > 255 )) || [[ ${#octet} -gt 1 && "$octet" == 0* ]]; then
+      echo 'IPv4 地址格式不正确。' >&2
+      exit 2
+    fi
+  done
+  first=$((10#${octets[0]}))
+  second=$((10#${octets[1]}))
+  third=$((10#${octets[2]}))
+  if (( first == 0 || first == 10 || first == 127 || first >= 224 ||
       (first == 100 && second >= 64 && second <= 127) ||
       (first == 169 && second == 254) ||
       (first == 172 && second >= 16 && second <= 31) ||
       (first == 192 && (second == 168 || (second == 0 && third == 2))) ||
       (first == 198 && second == 51 && third == 100) ||
       (first == 203 && second == 0 && third == 113) )); then
-  echo '请填写服务器的真实公网 IPv4，不能使用内网、回环或文档示例地址。' >&2
-  exit 2
+    echo '请填写服务器的真实公网 IPv4，不能使用内网、回环或文档示例地址。' >&2
+    exit 2
+  fi
 fi
 
 case "$(uname -m)" in
@@ -54,7 +56,8 @@ else
 fi
 env_file="$state_dir/.env"
 backup_dir="$state_dir/backups"
-origin="https://$public_ip"
+origin='http://localhost:3001'
+if [[ -n "$public_ip" ]]; then origin="https://$public_ip"; fi
 
 if ! docker info >/dev/null 2>&1; then
   echo 'Docker 服务不可用，请先检查 docker version。' >&2
@@ -93,7 +96,8 @@ if [[ ! -f "$env_file" ]]; then
 fi
 chmod 600 "$env_file"
 existing_origin="$(sed -n 's/^ORIGIN=//p' "$env_file" | tail -n 1 | tr -d '\r')"
-if [[ "$existing_origin" =~ ^https://[^/]+$ && ! "$existing_origin" =~ ^https://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && "$existing_origin" != 'https://localhost' ]]; then
+if [[ -z "$public_ip" && "$existing_origin" =~ ^https://[^/]+$ ]] ||
+   [[ -n "$public_ip" && "$existing_origin" =~ ^https://[^/]+$ && ! "$existing_origin" =~ ^https://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && "$existing_origin" != 'https://localhost' ]]; then
   origin="$existing_origin"
 fi
 set_env ORIGIN "$origin"
