@@ -11,7 +11,8 @@ cat > "$temp_dir/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$MOCK_LOG"
 case "$1 $2 $3" in
-  'image inspect poke-intel:local') [[ "${MOCK_LOCAL_IMAGE:-1}" == 1 ]]; exit ;;
+  'image inspect --format') [[ "${MOCK_LOCAL_IMAGE:-1}" == 1 ]] || exit 1; printf '%s\n' "${MOCK_LOCAL_PLATFORM:-linux/amd64}"; exit ;;
+  'container inspect --format') printf '%s\n' "${MOCK_BACKUP_MOUNT:-}"; exit ;;
   'container inspect poke-intel') [[ "${MOCK_OLD_CONTAINER:-0}" == 1 ]]; exit ;;
   'info  ') exit 0 ;;
   'pull '*) [[ "${MOCK_PULL_FAIL:-0}" != 1 ]]; exit ;;
@@ -81,12 +82,45 @@ fi
 [[ ! -e "$POKE_INTEL_HOME/.env" ]] || { echo 'Failed image pull changed configuration' >&2; exit 1; }
 ! grep -Eq '^(stop|rm) ' "$MOCK_LOG"
 
+export MOCK_LOG="$temp_dir/missing-config.log" MOCK_LOCAL_IMAGE=1 MOCK_PULL_FAIL=0 MOCK_OLD_CONTAINER=1 POKE_INTEL_HOME="$temp_dir/missing-config/state"
+if bash "$temp_dir/project/deploy/quickstart.sh" '8.8.8.8' > "$temp_dir/missing-config-output.log" 2>&1; then
+  echo 'Existing container without matching configuration was replaced' >&2
+  exit 1
+fi
+! grep -Eq '^(pull|stop|rename|run) ' "$MOCK_LOG"
+
 export MOCK_LOG="$temp_dir/rollback.log" MOCK_LOCAL_IMAGE=1 MOCK_PULL_FAIL=1 MOCK_RUN_FAIL=1 MOCK_OLD_CONTAINER=1 POKE_INTEL_HOME="$temp_dir/rollback-state"
+mkdir -p "$POKE_INTEL_HOME"
+printf '%s\n' 'SETTINGS_ENCRYPTION_KEY=existing-secret' > "$POKE_INTEL_HOME/.env"
 if bash "$temp_dir/project/deploy/quickstart.sh" '8.8.8.8' > "$temp_dir/rollback-output.log" 2>&1; then
   echo 'Failed docker run was accepted' >&2
   exit 1
 fi
 grep -q '^rename poke-intel poke-intel-previous-' "$MOCK_LOG" || { echo 'Old container was not preserved' >&2; exit 1; }
 grep -q '^start poke-intel$' "$MOCK_LOG" || { echo 'Old container was not restarted' >&2; exit 1; }
+
+export MOCK_LOG="$temp_dir/architecture.log" MOCK_LOCAL_IMAGE=1 MOCK_LOCAL_PLATFORM=linux/amd64 MOCK_PULL_FAIL=1 MOCK_RUN_FAIL=0 MOCK_OLD_CONTAINER=1 MOCK_ARCH=aarch64 POKE_INTEL_HOME="$temp_dir/architecture-state"
+mkdir -p "$POKE_INTEL_HOME"
+printf '%s\n' 'SETTINGS_ENCRYPTION_KEY=existing-secret' > "$POKE_INTEL_HOME/.env"
+if bash "$temp_dir/project/deploy/quickstart.sh" '8.8.8.8' > "$temp_dir/architecture-output.log" 2>&1; then
+  echo 'Mismatched local image architecture was accepted' >&2
+  exit 1
+fi
+! grep -Eq '^(stop|rename|run) ' "$MOCK_LOG"
+
+unset POKE_INTEL_HOME
+mkdir -p "$temp_dir/project/backups"
+cat > "$temp_dir/project/.env" <<'EOF'
+SETTINGS_ENCRYPTION_KEY=existing-secret
+ORIGIN=https://api.example.com
+ALLOWED_ORIGINS=https://app.example.com
+EOF
+export MOCK_LOG="$temp_dir/upgrade.log" MOCK_LOCAL_IMAGE=1 MOCK_LOCAL_PLATFORM=linux/amd64 MOCK_PULL_FAIL=0 MOCK_OLD_CONTAINER=1 MOCK_ARCH=x86_64 MOCK_BACKUP_MOUNT="$temp_dir/old-backups"
+bash "$temp_dir/project/deploy/quickstart.sh" '8.8.8.8' > "$temp_dir/upgrade-output.log" 2>&1
+grep -qx 'SETTINGS_ENCRYPTION_KEY=existing-secret' "$temp_dir/project/.env"
+grep -qx 'ORIGIN=https://api.example.com' "$temp_dir/project/.env"
+grep -qx 'ALLOWED_ORIGINS=https://app.example.com,https://api.example.com' "$temp_dir/project/.env"
+grep -Fq "$temp_dir/old-backups:/app/backups" "$MOCK_LOG"
+! grep -q 'poke-intel-backups:/app/backups' "$MOCK_LOG"
 
 echo 'quickstart smoke checks passed'

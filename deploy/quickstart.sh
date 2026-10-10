@@ -33,12 +33,20 @@ if (( first == 0 || first == 10 || first == 127 || first >= 224 ||
 fi
 
 case "$(uname -m)" in
-  x86_64|amd64|aarch64|arm64) ;;
+  x86_64|amd64) host_arch='amd64' ;;
+  aarch64|arm64) host_arch='arm64' ;;
   *) echo '当前 CPU 架构尚无预构建镜像；支持 Linux x86_64 和 ARM64。' >&2; exit 2 ;;
 esac
 
 if [[ -n "${POKE_INTEL_HOME:-}" ]]; then
   state_dir="$POKE_INTEL_HOME"
+elif [[ "${BASH_SOURCE[0]}" == */deploy/quickstart.sh && -f "$(dirname "${BASH_SOURCE[0]}")/../.env" ]]; then
+  state_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+elif [[ -f /opt/poke-intel/.env && -f /opt/poke-intel-app/.env ]]; then
+  echo '发现两份旧配置，请设置 POKE_INTEL_HOME 为当前容器所用的配置目录后重试。' >&2
+  exit 2
+elif [[ -f /opt/poke-intel-app/.env ]]; then
+  state_dir='/opt/poke-intel-app'
 elif [[ -f /opt/poke-intel/.env || $EUID -eq 0 ]]; then
   state_dir='/opt/poke-intel'
 else
@@ -50,6 +58,10 @@ origin="https://$public_ip"
 
 if ! docker info >/dev/null 2>&1; then
   echo 'Docker 服务不可用，请先检查 docker version。' >&2
+  exit 1
+fi
+if docker container inspect poke-intel >/dev/null 2>&1 && [[ ! -f "$env_file" ]]; then
+  echo '已有 poke-intel 容器，但找不到它的配置文件。请设置 POKE_INTEL_HOME 为原 .env 所在目录后重试；旧容器未改动。' >&2
   exit 1
 fi
 
@@ -66,10 +78,11 @@ image='ghcr.io/dll315/poke-intel:latest'
 echo '正在从 GitHub 下载预构建镜像（最多等待 60 秒）……'
 if ! timeout 60s docker pull "$image"; then
   image='poke-intel:local'
-  if docker image inspect "$image" >/dev/null 2>&1; then
+  local_platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image" 2>/dev/null || true)"
+  if [[ "$local_platform" == "linux/$host_arch" ]]; then
     echo '下载未成功，改用本机已有镜像。'
   else
-    echo '镜像下载失败且本机没有镜像；现有容器未被删除。请检查网络或 GitHub 镜像包是否已设为 Public。' >&2
+    echo "镜像下载失败，本机也没有适合 linux/$host_arch 的镜像；现有容器未被删除。请检查网络。" >&2
     exit 1
   fi
 fi
@@ -79,15 +92,29 @@ if [[ ! -f "$env_file" ]]; then
   (umask 077; : > "$env_file")
 fi
 chmod 600 "$env_file"
+existing_origin="$(sed -n 's/^ORIGIN=//p' "$env_file" | tail -n 1 | tr -d '\r')"
+if [[ "$existing_origin" =~ ^https://[^/]+$ && ! "$existing_origin" =~ ^https://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && "$existing_origin" != 'https://localhost' ]]; then
+  origin="$existing_origin"
+fi
 set_env ORIGIN "$origin"
-set_env ALLOWED_ORIGINS "$origin"
+allowed_origins="$(sed -n 's/^ALLOWED_ORIGINS=//p' "$env_file" | tail -n 1 | tr -d '\r')"
+if [[ ",$allowed_origins," != *",$origin,"* ]]; then
+  allowed_origins="${allowed_origins:+$allowed_origins,}$origin"
+fi
+set_env ALLOWED_ORIGINS "$allowed_origins"
 encryption_key="$(sed -n 's/^SETTINGS_ENCRYPTION_KEY=//p' "$env_file" | tail -n 1 | tr -d '\r')"
 if [[ -z "$encryption_key" ]]; then
   set_env SETTINGS_ENCRYPTION_KEY "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
 fi
 
 docker volume create poke-intel-data >/dev/null
-if [[ -d "$backup_dir" ]]; then
+existing_backup_mount=''
+if docker container inspect poke-intel >/dev/null 2>&1; then
+  existing_backup_mount="$(docker container inspect --format '{{range .Mounts}}{{if eq .Destination "/app/backups"}}{{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}}{{end}}{{end}}' poke-intel)"
+fi
+if [[ -n "$existing_backup_mount" ]]; then
+  backup_mount="$existing_backup_mount:/app/backups"
+elif [[ -d "$backup_dir" ]]; then
   backup_mount="$backup_dir:/app/backups"
 else
   docker volume create poke-intel-backups >/dev/null
@@ -106,8 +133,8 @@ if docker container inspect poke-intel >/dev/null 2>&1; then
 fi
 
 restore_previous() {
+  docker rm -f poke-intel >/dev/null 2>&1 || true
   if [[ "$old_container" == 1 ]]; then
-    docker rm -f poke-intel >/dev/null 2>&1 || true
     docker rename "$previous_name" poke-intel >/dev/null
     docker start poke-intel >/dev/null
     echo '已恢复旧容器，数据库卷未删除。' >&2

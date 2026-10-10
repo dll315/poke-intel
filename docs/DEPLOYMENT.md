@@ -18,9 +18,11 @@ f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/dll315/poke-intel/ma
 git -C /opt/poke-intel pull --ff-only && bash /opt/poke-intel/deploy/quickstart.sh 你的公网IP
 ```
 
-脚本可独立运行，无须克隆源码。它自动创建或修正 `.env` 的 `ORIGIN`、`ALLOWED_ORIGINS`，只在密钥缺失时生成新密钥；保留 `poke-intel-data` 数据卷和其他已有设置。新部署的备份放在 `poke-intel-backups` 命名卷；已有 `/opt/poke-intel/backups` 目录时继续使用该目录。它优先拉取[已公开的预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，下载失败时使用本机已有的 `poke-intel:local` 镜像；两者都不可用时不删除旧容器。镜像提供 Linux x86_64 与 ARM64 版本。
+脚本可独立运行，无须克隆源码。它自动创建 `.env`；升级时沿用原有密钥、HTTPS 域名、其他允许访问的来源、数据库卷和备份挂载。找不到旧容器的 `.env` 时会停止安装，避免丢失机器人链接的解密密钥。新部署的备份放在 `poke-intel-backups` 命名卷；已有备份目录时继续使用该目录。它优先拉取[已公开的预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，下载失败时仅使用与服务器 CPU 架构匹配的本机 `poke-intel:local` 镜像；两者都不可用时不删除旧容器。镜像提供 Linux x86_64 与 ARM64 版本。
 
-脚本只将 3001 绑定到服务器本机，并通过健康接口确认后台已启动。**这不等于公网网页已经可用**：账号登录需要真正的 HTTPS，请继续按下文配置证书与反向代理；OpenCloudOS 的系统安装步骤不能照搬 Ubuntu 命令。首次启动后执行 `docker exec -it poke-intel node scripts/admin.mjs admin 管理员` 创建管理员。
+原来安装在 `/opt/poke-intel-app` 的服务器也可直接运行第一条命令；脚本会寻找原有 `.env`。如果服务器同时有 `/opt/poke-intel` 和 `/opt/poke-intel-app` 两份配置，请明确指定旧容器所用目录，例如 `POKE_INTEL_HOME=/opt/poke-intel-app bash /opt/poke-intel-app/deploy/quickstart.sh 你的公网IP`。使用其他自定义目录时同样设置 `POKE_INTEL_HOME`，不要新建一份空配置。
+
+脚本只将 3001 绑定到服务器本机，并通过健康接口确认后台已启动。**这不等于公网网页已经可用**：账号登录需要真正的 HTTPS，请继续按下文配置证书与反向代理；OpenCloudOS 的系统安装步骤不能照搬 Ubuntu 命令。首次启动后执行 `docker exec -it poke-intel node scripts/admin.mjs admin 管理员` 创建管理员。Alphapedia 监控默认关闭，确认数据可复用后才按下文开启；否则网页可以启动，但不会自动收到头目、群聚和奇遇数据。
 
 ## 发布前准备
 
