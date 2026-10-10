@@ -1,18 +1,24 @@
 # 部署指南
 
-本项目有网页和 Node.js 后台两部分。后台负责账号、SQLite 数据库、Alphapedia 定时检查和企业微信推送，必须保持运行。推荐在 Ubuntu 服务器上用 Docker Compose 或 `docker run` 部署完整网站；GitHub Pages 只能托管前端文件，仍需另行部署后台。
+本项目有网页和 Node.js 后台两部分。后台负责账号、SQLite 数据库、Alphapedia 定时检查和企业微信推送，必须保持运行。已安装 Docker 的 Linux 服务器可先用下方一条命令启动后台；手动 Docker Compose 和 `docker run` 步骤留作高级部署。GitHub Pages 只能托管前端文件，仍需另行部署后台。
 
 **系统提示：**下文的 Docker 镜像和 `docker run` 命令也适用于 OpenCloudOS，但 `apt`、snap 安装及 `/etc/nginx/sites-available` 等主机操作示例按 Ubuntu 编写。若终端提示符出现 `opencloudos`，主机软件使用 `dnf` 管理，请先确认系统版本，不要直接照搬 Ubuntu 的 Nginx/Certbot 安装段落。详见 [OpenCloudOS 官方软件包管理说明](https://docs.opencloudos.org/en/OCS/AdministratorGuide/Software_Management/)。
 
-## 快速启动已有源码
+## 一条命令启动后台
 
-源码已在 `/opt/poke-intel` 且 Docker 可用时，用一行命令启动后台；把示例 IP 换成实际公网 IPv4：
+Linux 服务器已安装并启动 Docker，且能访问 GitHub 和镜像仓库时，把 `你的公网IP` 换成真实公网 IPv4，运行一行：
+
+```bash
+f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/dll315/poke-intel/main/deploy/quickstart.sh -o "$f" && bash "$f" 你的公网IP
+```
+
+已有源码且路径为 `/opt/poke-intel` 时，可以用下面一行更新脚本并部署：
 
 ```bash
 git -C /opt/poke-intel pull --ff-only && bash /opt/poke-intel/deploy/quickstart.sh 你的公网IP
 ```
 
-全新服务器已安装 Docker 时，先用 `git clone https://github.com/dll315/poke-intel.git /opt/poke-intel` 获取源码，再运行同一条脚本命令。脚本自动创建或修正 `.env` 的 `ORIGIN`、`ALLOWED_ORIGINS`，只在密钥缺失时生成新密钥；保留 `poke-intel-data` 数据卷和其他已有设置。它优先拉取[已公开的预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，下载失败时使用本机已有的 `poke-intel:local` 镜像；两者都不可用时不删除旧容器。
+脚本可独立运行，无须克隆源码。它自动创建或修正 `.env` 的 `ORIGIN`、`ALLOWED_ORIGINS`，只在密钥缺失时生成新密钥；保留 `poke-intel-data` 数据卷和其他已有设置。新部署的备份放在 `poke-intel-backups` 命名卷；已有 `/opt/poke-intel/backups` 目录时继续使用该目录。它优先拉取[已公开的预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，下载失败时使用本机已有的 `poke-intel:local` 镜像；两者都不可用时不删除旧容器。镜像提供 Linux x86_64 与 ARM64 版本。
 
 脚本只将 3001 绑定到服务器本机，并通过健康接口确认后台已启动。**这不等于公网网页已经可用**：账号登录需要真正的 HTTPS，请继续按下文配置证书与反向代理；OpenCloudOS 的系统安装步骤不能照搬 Ubuntu 命令。首次启动后执行 `docker exec -it poke-intel node scripts/admin.mjs admin 管理员` 创建管理员。
 

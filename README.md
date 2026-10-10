@@ -6,15 +6,21 @@
 
 **数据说明：**首次启动为空数据库，不会显示伪造情报。配置外部来源后可同步 Alphapedia 数据。支持企业微信机器人群推送；当前没有个人浏览器推送、短信或自动密码找回。玩家情报经管理员审核后展示；外部头目记录按来源时间自动展示，是否仍有效请以游戏内情况为准。
 
-## 快速启动（已有源码）
+## 一条命令启动后台
 
-服务器已安装 Docker、源码在 `/opt/poke-intel` 时，只需把下面的示例 IP 换成真实公网 IPv4，然后执行：
+Linux 服务器已安装并启动 Docker，且能访问 GitHub 和镜像仓库时，把 `你的公网IP` 换成服务器真实公网 IPv4，执行一行：
+
+```bash
+f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/dll315/poke-intel/main/deploy/quickstart.sh -o "$f" && bash "$f" 你的公网IP
+```
+
+已有源码的服务器也可以用下面一行更新脚本并部署：
 
 ```bash
 git -C /opt/poke-intel pull --ff-only && bash /opt/poke-intel/deploy/quickstart.sh 你的公网IP
 ```
 
-全新服务器已安装 Docker 时，可用 `git clone https://github.com/dll315/poke-intel.git /opt/poke-intel && bash /opt/poke-intel/deploy/quickstart.sh 你的公网IP`。脚本会修正 `.env` 中的 HTTPS `ORIGIN`、补齐加密密钥并保留原有数据库卷；优先拉取[公开的 GitHub 预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，下载失败时使用本机已有的 `poke-intel:local` 镜像。脚本确认的是**本机后台**启动；公网网页仍需按[HTTPS 步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)配置证书和反向代理，安全组开放 80/443。
+脚本不依赖源码：会创建配置、补齐加密密钥、保留原有数据库卷，拉取[公开的 GitHub 预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，并启动容器。镜像提供常见的 Linux x86_64 与 ARM64 版本，Docker 会按服务器架构选择。镜像下载失败且本机有 `poke-intel:local` 时会使用本机镜像。脚本确认的是**本机后台**启动；公网网页仍需按[HTTPS 步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)配置证书和反向代理，安全组开放 80/443。
 
 ## Linux 用 `docker run` 部署（无域名）
 

@@ -5,7 +5,6 @@ repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "$temp_dir"' EXIT
 mkdir -p "$temp_dir/project/deploy" "$temp_dir/bin"
-cp "$repo_dir/.env.example" "$temp_dir/project/.env.example"
 cp "$repo_dir/deploy/quickstart.sh" "$temp_dir/project/deploy/quickstart.sh"
 
 cat > "$temp_dir/bin/docker" <<'EOF'
@@ -13,11 +12,11 @@ cat > "$temp_dir/bin/docker" <<'EOF'
 printf '%s\n' "$*" >> "$MOCK_LOG"
 case "$1 $2 $3" in
   'image inspect poke-intel:local') [[ "${MOCK_LOCAL_IMAGE:-1}" == 1 ]]; exit ;;
-  'container inspect poke-intel') exit 0 ;;
+  'container inspect poke-intel') [[ "${MOCK_OLD_CONTAINER:-0}" == 1 ]]; exit ;;
   'info  ') exit 0 ;;
   'pull '*) [[ "${MOCK_PULL_FAIL:-0}" != 1 ]]; exit ;;
   'volume create poke-intel-data') exit 0 ;;
-  'run '*) printf '%s\n' 'fake-container-id'; exit 0 ;;
+  'run '*) if [[ "${MOCK_RUN_FAIL:-0}" == 1 ]]; then exit 1; fi; printf '%s\n' 'fake-container-id'; exit 0 ;;
 esac
 exit 0
 EOF
@@ -35,8 +34,23 @@ cat > "$temp_dir/bin/sleep" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-chmod +x "$temp_dir/bin/docker" "$temp_dir/bin/install" "$temp_dir/bin/curl" "$temp_dir/bin/sleep"
-export PATH="$temp_dir/bin:$PATH" MOCK_LOG="$temp_dir/docker.log"
+cat > "$temp_dir/bin/uname" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "${MOCK_ARCH:-x86_64}"
+EOF
+cat > "$temp_dir/bin/openssl" <<'EOF'
+#!/usr/bin/env bash
+echo 'OpenSSL is intentionally unavailable in this test' >&2
+exit 1
+EOF
+chmod +x "$temp_dir/bin/docker" "$temp_dir/bin/install" "$temp_dir/bin/curl" "$temp_dir/bin/sleep" "$temp_dir/bin/uname" "$temp_dir/bin/openssl"
+export PATH="$temp_dir/bin:$PATH" MOCK_LOG="$temp_dir/docker.log" POKE_INTEL_HOME="$temp_dir/project/state"
+
+if MOCK_ARCH='mips64' bash "$temp_dir/project/deploy/quickstart.sh" '8.8.8.8' > "$temp_dir/unsupported.log" 2>&1; then
+  echo 'Unsupported CPU architecture was accepted' >&2
+  exit 1
+fi
+[[ ! -e "$MOCK_LOG" ]] || { echo 'Unsupported CPU architecture touched Docker' >&2; exit 1; }
 
 for invalid_ip in 'not-an-ip' '127.0.0.1' '203.0.113.10'; do
   if bash "$temp_dir/project/deploy/quickstart.sh" "$invalid_ip" > "$temp_dir/invalid.log" 2>&1; then
@@ -47,23 +61,32 @@ for invalid_ip in 'not-an-ip' '127.0.0.1' '203.0.113.10'; do
 done
 
 bash "$temp_dir/project/deploy/quickstart.sh" '8.8.8.8' > "$temp_dir/install.log" 2>&1
-grep -qx 'ORIGIN=https://8.8.8.8' "$temp_dir/project/.env"
-grep -qx 'ALLOWED_ORIGINS=https://8.8.8.8' "$temp_dir/project/.env"
-grep -Eq '^SETTINGS_ENCRYPTION_KEY=[0-9a-f]{64}$' "$temp_dir/project/.env"
+grep -qx 'ORIGIN=https://8.8.8.8' "$POKE_INTEL_HOME/.env"
+grep -qx 'ALLOWED_ORIGINS=https://8.8.8.8' "$POKE_INTEL_HOME/.env"
+grep -Eq '^SETTINGS_ENCRYPTION_KEY=[0-9a-f]{64}$' "$POKE_INTEL_HOME/.env"
 grep -q '^pull ghcr.io/dll315/poke-intel:latest$' "$MOCK_LOG"
 grep -q '^run .*ghcr.io/dll315/poke-intel:latest$' "$MOCK_LOG"
+grep -q '^volume create poke-intel-backups$' "$MOCK_LOG"
+grep -q 'poke-intel-backups:/app/backups' "$MOCK_LOG"
 ! grep -q '^build ' "$MOCK_LOG"
 ! grep -q '^volume rm ' "$MOCK_LOG"
 
 mkdir -p "$temp_dir/pull-failure/deploy"
-cp "$repo_dir/.env.example" "$temp_dir/pull-failure/.env.example"
 cp "$repo_dir/deploy/quickstart.sh" "$temp_dir/pull-failure/deploy/quickstart.sh"
-export MOCK_LOG="$temp_dir/pull-failure.log" MOCK_LOCAL_IMAGE=0 MOCK_PULL_FAIL=1
+export MOCK_LOG="$temp_dir/pull-failure.log" MOCK_LOCAL_IMAGE=0 MOCK_PULL_FAIL=1 POKE_INTEL_HOME="$temp_dir/pull-failure/state"
 if bash "$temp_dir/pull-failure/deploy/quickstart.sh" '8.8.8.8' > "$temp_dir/pull-failure-output.log" 2>&1; then
   echo 'Failed image pull was accepted' >&2
   exit 1
 fi
-[[ ! -e "$temp_dir/pull-failure/.env" ]] || { echo 'Failed image pull changed configuration' >&2; exit 1; }
+[[ ! -e "$POKE_INTEL_HOME/.env" ]] || { echo 'Failed image pull changed configuration' >&2; exit 1; }
 ! grep -Eq '^(stop|rm) ' "$MOCK_LOG"
+
+export MOCK_LOG="$temp_dir/rollback.log" MOCK_LOCAL_IMAGE=1 MOCK_PULL_FAIL=1 MOCK_RUN_FAIL=1 MOCK_OLD_CONTAINER=1 POKE_INTEL_HOME="$temp_dir/rollback-state"
+if bash "$temp_dir/project/deploy/quickstart.sh" '8.8.8.8' > "$temp_dir/rollback-output.log" 2>&1; then
+  echo 'Failed docker run was accepted' >&2
+  exit 1
+fi
+grep -q '^rename poke-intel poke-intel-previous-' "$MOCK_LOG" || { echo 'Old container was not preserved' >&2; exit 1; }
+grep -q '^start poke-intel$' "$MOCK_LOG" || { echo 'Old container was not restarted' >&2; exit 1; }
 
 echo 'quickstart smoke checks passed'
