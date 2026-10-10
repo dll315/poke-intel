@@ -8,7 +8,8 @@ ENV VITE_ICP_NUMBER=$VITE_ICP_NUMBER
 RUN npm run build
 
 FROM node:24-bookworm-slim
-LABEL org.opencontainers.image.source="https://github.com/dll315/poke-intel"
+LABEL org.opencontainers.image.source="https://github.com/dll315/poke-intel" \
+      io.poke-intel.loopback-origin="1"
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3001 DB_PATH=/app/data/poke.db
 WORKDIR /app
 COPY package.json package-lock.json ./

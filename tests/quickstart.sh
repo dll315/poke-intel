@@ -11,7 +11,10 @@ cat > "$temp_dir/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$MOCK_LOG"
 case "$1 $2 $3" in
-  'image inspect --format') [[ "${MOCK_LOCAL_IMAGE:-1}" == 1 ]] || exit 1; printf '%s\n' "${MOCK_LOCAL_PLATFORM:-linux/amd64}"; exit ;;
+  'image inspect --format')
+    [[ "${MOCK_LOCAL_IMAGE:-1}" == 1 ]] || exit 1
+    if [[ "$4" == *loopback-origin* ]]; then printf '%s\n' "${MOCK_LOCAL_LOOPBACK:-0}"; else printf '%s\n' "${MOCK_LOCAL_PLATFORM:-linux/amd64}"; fi
+    exit ;;
   'container inspect --format') printf '%s\n' "${MOCK_BACKUP_MOUNT:-}"; exit ;;
   'container inspect poke-intel') [[ "${MOCK_OLD_CONTAINER:-0}" == 1 ]]; exit ;;
   'info  ') exit 0 ;;
@@ -96,7 +99,22 @@ if bash "$temp_dir/project/deploy/quickstart.sh" '8.8.8.8' > "$temp_dir/missing-
 fi
 ! grep -Eq '^(pull|stop|rename|run) ' "$MOCK_LOG"
 
-export MOCK_LOG="$temp_dir/rollback.log" MOCK_LOCAL_IMAGE=1 MOCK_PULL_FAIL=1 MOCK_RUN_FAIL=1 MOCK_OLD_CONTAINER=1 POKE_INTEL_HOME="$temp_dir/rollback-state"
+export MOCK_LOG="$temp_dir/legacy-fallback.log" MOCK_LOCAL_IMAGE=1 MOCK_LOCAL_LOOPBACK=0 MOCK_PULL_FAIL=1 MOCK_OLD_CONTAINER=1 POKE_INTEL_HOME="$temp_dir/legacy-fallback/state"
+mkdir -p "$POKE_INTEL_HOME"
+printf '%s\n' 'ORIGIN=http://localhost:3001' 'SETTINGS_ENCRYPTION_KEY=existing-secret' > "$POKE_INTEL_HOME/.env"
+if bash "$temp_dir/project/deploy/quickstart.sh" > "$temp_dir/legacy-fallback-output.log" 2>&1; then
+  echo 'Legacy local image was accepted for loopback mode' >&2
+  exit 1
+fi
+! grep -Eq '^(stop|rename|run) ' "$MOCK_LOG"
+grep -qx 'ORIGIN=http://localhost:3001' "$POKE_INTEL_HOME/.env"
+
+export MOCK_LOG="$temp_dir/current-fallback.log" MOCK_LOCAL_LOOPBACK=1 MOCK_OLD_CONTAINER=0 POKE_INTEL_HOME="$temp_dir/current-fallback/state"
+bash "$temp_dir/project/deploy/quickstart.sh" > "$temp_dir/current-fallback-output.log" 2>&1
+grep -q '^run .*poke-intel:local$' "$MOCK_LOG"
+grep -qx 'ORIGIN=http://localhost:3001' "$POKE_INTEL_HOME/.env"
+
+export MOCK_LOG="$temp_dir/rollback.log" MOCK_LOCAL_IMAGE=1 MOCK_LOCAL_LOOPBACK=0 MOCK_PULL_FAIL=1 MOCK_RUN_FAIL=1 MOCK_OLD_CONTAINER=1 POKE_INTEL_HOME="$temp_dir/rollback-state"
 mkdir -p "$POKE_INTEL_HOME"
 printf '%s\n' 'SETTINGS_ENCRYPTION_KEY=existing-secret' > "$POKE_INTEL_HOME/.env"
 if bash "$temp_dir/project/deploy/quickstart.sh" '8.8.8.8' > "$temp_dir/rollback-output.log" 2>&1; then

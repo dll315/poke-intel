@@ -20,7 +20,7 @@ f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/dll315/poke-intel/ma
 git -C /opt/poke-intel pull --ff-only && bash /opt/poke-intel/deploy/quickstart.sh
 ```
 
-脚本不依赖源码：会创建配置、补齐加密密钥、保留原有数据库卷，拉取[公开的 GitHub 预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，并启动容器。镜像提供常见的 Linux x86_64 与 ARM64 版本，Docker 会按服务器架构选择。镜像下载失败且本机有 `poke-intel:local` 时会使用本机镜像。不填 IP 时仅在服务器本机监听，`ORIGIN` 默认是 `http://localhost:3001`；已有 HTTPS 地址会保留。公网网页仍需按[HTTPS 步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)配置证书和反向代理，安全组开放 80/443。配置公网 HTTPS 时，可以给脚本传入实际公网 IPv4。
+脚本不依赖源码：会创建配置、补齐加密密钥、保留原有数据库卷，拉取[公开的 GitHub 预构建镜像](https://github.com/users/dll315/packages/container/package/poke-intel)，并启动容器。镜像提供常见的 Linux x86_64 与 ARM64 版本，Docker 会按服务器架构选择。慢速网络下镜像下载最多等待 20 分钟；下载失败时仅在本机镜像支持当前模式的情况下备用，旧镜像不兼容无 IP 模式时会在替换容器前停下。不填 IP 时仅在服务器本机监听，`ORIGIN` 默认是 `http://localhost:3001`；已有 HTTPS 地址会保留。公网网页仍需按[HTTPS 步骤](docs/DEPLOYMENT.md#无域名公网-ip--https)配置证书和反向代理，安全组开放 80/443。配置公网 HTTPS 时，可以给脚本传入实际公网 IPv4。
 
 ## Linux 用 `docker run` 部署（无域名）
 

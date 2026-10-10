@@ -77,12 +77,28 @@ set_env() {
   fi
 }
 
+existing_origin=''
+if [[ -f "$env_file" ]]; then
+  existing_origin="$(sed -n 's/^ORIGIN=//p' "$env_file" | tail -n 1 | tr -d '\r')"
+fi
+if [[ -z "$public_ip" && "$existing_origin" =~ ^https://[^/]+$ ]] ||
+   [[ -n "$public_ip" && "$existing_origin" =~ ^https://[^/]+$ && ! "$existing_origin" =~ ^https://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && "$existing_origin" != 'https://localhost' ]]; then
+  origin="$existing_origin"
+fi
+
 image='ghcr.io/dll315/poke-intel:latest'
-echo '正在从 GitHub 下载预构建镜像（最多等待 60 秒）……'
-if ! timeout 60s docker pull "$image"; then
+echo '正在从 GitHub 下载预构建镜像（网络慢时最多等待 20 分钟）……'
+if ! timeout 20m docker pull "$image"; then
   image='poke-intel:local'
   local_platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image" 2>/dev/null || true)"
   if [[ "$local_platform" == "linux/$host_arch" ]]; then
+    if [[ "$origin" == 'http://localhost:3001' ]]; then
+      local_loopback="$(docker image inspect --format '{{index .Config.Labels "io.poke-intel.loopback-origin"}}' "$image" 2>/dev/null || true)"
+      if [[ "$local_loopback" != 1 ]]; then
+        echo '镜像下载未完成；本机旧镜像不支持无 IP 模式。现有容器未改动，请检查网络后重试。' >&2
+        exit 1
+      fi
+    fi
     echo '下载未成功，改用本机已有镜像。'
   else
     echo "镜像下载失败，本机也没有适合 linux/$host_arch 的镜像；现有容器未被删除。请检查网络。" >&2
@@ -95,11 +111,6 @@ if [[ ! -f "$env_file" ]]; then
   (umask 077; : > "$env_file")
 fi
 chmod 600 "$env_file"
-existing_origin="$(sed -n 's/^ORIGIN=//p' "$env_file" | tail -n 1 | tr -d '\r')"
-if [[ -z "$public_ip" && "$existing_origin" =~ ^https://[^/]+$ ]] ||
-   [[ -n "$public_ip" && "$existing_origin" =~ ^https://[^/]+$ && ! "$existing_origin" =~ ^https://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && "$existing_origin" != 'https://localhost' ]]; then
-  origin="$existing_origin"
-fi
 set_env ORIGIN "$origin"
 allowed_origins="$(sed -n 's/^ALLOWED_ORIGINS=//p' "$env_file" | tail -n 1 | tr -d '\r')"
 if [[ ",$allowed_origins," != *",$origin,"* ]]; then
